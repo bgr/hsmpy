@@ -1,44 +1,44 @@
-from collections import namedtuple as _n
 import logging
 
 _log = logging.getLogger(__name__)
 
 
-_Transition = _n('Transition', 'triggering_event, to_state,'
-                               'on_transition, condition')
+class Transition(object):
+    def __init__(self, target, action=None, guard=None):
+        if action is None:
+            action = lambda: None
+        if guard is None:
+            guard = lambda: True
+        self.target = target
+        self.action = action
+        self.guard = guard
+
+
+class LocalTransition(Transition):
+    pass
+
+
+class LoopTransition(Transition):
+    def __init__(self, action=None, guard=None):
+        super(self).__init__(None, action, guard)
 
 
 class State(object):
-    def __init__(self):
-        self._interests = {}  # override this value
+    interests = {}  # override
 
-    @property
-    def parent_fsm(self):
-        return self._fsm
-
-    @parent_fsm.setter
-    def parent_fsm(self, fsm):
-        self._fsm = fsm
-
-    def enter(self):
-        # override this method
+    def enter(self):  # override
         pass
 
-    def exit(self):
-        # override this method
+    def exit(self):  # override
         pass
 
-    @property
-    def interests(self):
-        return self._interests
 
+class CompositeState(State):
+    def __init__(self, states):
+        self.states = states
 
-def Transition(triggering_event, to_state, on_transition=None, condition=None):
-    if on_transition is None:
-        on_transition = lambda: None
-    if condition is None:
-        condition = lambda: True
-    return _Transition(triggering_event, to_state, on_transition, condition)
+# after bundling states and transitions by calling HSM.bundle(),
+# states will get additional properties: _hsm, name
 
 
 class NullState(State):

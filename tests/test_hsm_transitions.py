@@ -1,5 +1,5 @@
 from hsmpy.eventbus import EventBus, Event
-from hsmpy.statemachine import SimpleState, CompositeState
+from hsmpy.statemachine import State, CompositeState
 from hsmpy.statemachine import Transition as T
 from hsmpy.statemachine import InternalTransition as Internal
 from hsmpy.statemachine import LocalTransition as Local
@@ -58,10 +58,10 @@ class S2(CompositeState):
 
 
 class Top(CompositeState): pass
-class Final(SimpleState): pass
-class S11(SimpleState): pass
+class Final(State): pass
+class S11(State): pass
 class S21(CompositeState): pass
-class S211(SimpleState): pass
+class S211(State): pass
 
 
 def create_test_machine():
@@ -79,7 +79,7 @@ def create_test_machine():
     s21 = S21()
     s211 = S211()
 
-    # structure
+    # structure format 1
     top(
         s(
             s1(
@@ -90,7 +90,126 @@ def create_test_machine():
         final
     )
 
-    # transitions
+    # structure format 2
+    states = {
+        top: {
+            s: {
+                s1: {
+                    s11: {} },
+                s2: {
+                    s21: {
+                        s211: {} }
+                }
+            },
+            final: {}
+        }
+    }
+
+    # structure format 3 (states and transitions together) - too confusing
+    # states = {
+    #     'top': CompositeState(
+    #     initial=T('s.s2', action=set_foo_0),
+    #     trans={
+    #         TERMINATE: T('final')},
+    #     states={
+    #         's': CompositeState(
+    #         initial=T('s1.s11'),
+    #         trans={
+    #             E: Local('s1.s11')},
+    #         states={
+    #             's1': CompositeState(
+    #             initial=T('s11'),
+    #             trans={
+    #                 A: Loop(),
+    #                 B: Local('s11'),
+    #                 C: T('s2'),
+    #                 D: Local('^s', guard=foo_eq_0, action=set_foo_1),},
+    #             states={
+    #                 's11': State(
+    #                 trans={
+    #                     D: Local('^s1', guard=foo_eq_1, action=set_foo_0),
+    #                     G: T('^^s.s2.s21.s211'),
+    #                     H: Local('^^s'),}
+    #             )}
+    #             ),
+    #             's2': CompositeState(
+    #             initial=T('s21.s211'),
+    #             trans=[
+    #                 C: T('s1'),
+    #                 F: T('s1.s11'),],
+    #             states={
+    #                 's21': CompositeState(
+    #                 initial=T('s211'),
+    #                 trans={
+    #                     A: Loop(),
+    #                     B: Local('s211'),}
+    #                 states={
+    #                     's211': State(
+    #                     trans={
+    #                         D: Local('^s21'),
+    #                         H: Local('^^^s'),}
+    #                     )
+    #                 },
+    #             )]
+    #         )]
+    #     ),
+    #     State('final')
+    #     ])
+
+    # structure format take 4
+    states = {
+        'top': CompositeState({
+            's': CompositeState({
+                's1': CompositeState({
+                    's11': State(),
+                }),
+                's2': CompositeState({
+                    's21': CompositeState({
+                        's211': State()
+                    })
+                })
+            }),
+            'final': State()
+        })
+    }
+
+    # transitions format 1
+    transitions = {
+        'top': {
+            'initial': T('s2', action=set_foo_0),
+            TERMINATE: T('final')
+        },
+        's': {
+            'initial': T('s11'),
+            E: T('s11'),
+        },
+        's1': {
+            'initial': T('s11'),
+            A: Loop(),
+            B: Local('s11'),
+            C: T('s2'),
+            D: Local('s', guard=foo_eq_0, action=set_foo_1)
+        },
+        's11': {
+            D: Local('s1', guard=foo_eq_1, action=set_foo_0),
+            G: T('s211'),
+            H: Local('s1'),
+        },
+        's2': {
+            C: T('s1'),
+            F: T('s11'),
+        },
+        's21': {
+            A: Loop(),
+            B: Local('s211'),
+        },
+        's211': {
+            D: Local('s21'),
+            H: Local('s'),
+        }
+    }
+
+    # transitions format 2
     top.initial(s2, set_foo_0)
     top.trans(
         T(TERMINATE, final)
@@ -135,13 +254,15 @@ def create_test_machine():
         Local(H, s),
     )
 
-    return top
+    # return top
+    return (states, transitions)  # this format is better
 
 
 class Test_Miro_Samek_machine(object):
 
     def setup_class(self):
-        self.hsm = hsmpy.make(create_test_machine())
+        states, transitions = create_test_machine()
+        self.hsm = hsmpy.bundle(states, transitions)
         # now it should check for validity
         assert self.hsm._log == []
 
