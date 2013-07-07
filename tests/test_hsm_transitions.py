@@ -185,7 +185,7 @@ def create_test_machine():
         },
         's1': {
             'initial': T('s11'),
-            A: Loop(),
+            A: T('s1'),  # loop into self
             B: Local('s11'),
             C: T('s2'),
             D: Local('s', guard=foo_eq_0, action=set_foo_1)
@@ -200,7 +200,7 @@ def create_test_machine():
             F: T('s11'),
         },
         's21': {
-            A: Loop(),
+            A: T('s21'),  # loop into self
             B: Local('s211'),
         },
         's211': {

@@ -1,3 +1,3 @@
-from hsm import (State, CompositeState, HSM, Transition, LocalTransition,
-                 InternalTransition)
+from statemachine import (State, CompositeState, HSM, Transition,
+                          LocalTransition)
 from eventbus import EventBus, Event
