@@ -304,14 +304,14 @@ class Test_structural_analysis(object):
                 'left': CompositeState({  # no initial transition
                     'left_A': State(),
                     'left_B': State(),
-                    'bad': CompositeState({}),  # unreachable; no initial tran,
-                                                # no substates
+                    'bad': CompositeState({}),  # unreachable; missing initial
+                                                # transition; no substates
                 }),
                 'middle': CompositeState({  # bad initial transition (outside)
                     'mid_A': State(),       # both unreachable
                 }),
                 'right': CompositeState({  # bad initial transition (loop)
-                    'right_A': State(),
+                    'right_A': State(),  # unreachable (incoming also unreach.)
                     'right_B': State(),  # unreachable; only has self loop
                 }),
             })
@@ -326,23 +326,25 @@ class Test_structural_analysis(object):
                 B: T('left'),  # loop
             },
             'right': {
-                A: Local('left'),  # invalid, cannot be local
-                B: Local('right'),  # loop, invalid (loop cannot be local)
+                A: Local('left_A'),  # invalid (target not local)
+                B: Local('right'),  # invalid loop (loop cannot be local)
                 C: T('bad_target_1'),
-                'initial': T('right'),  # inital cannot be loop
+                'initial': T('right'),  # inital transition cannot be loop
             },
             'middle': {
-                'initial': T('top'),  # invalid, goes outside
+                'initial': T('top'),  # initial transition cannot go outside
+                A: T('right_A'),  # this shouldn't make right_A reachable
             },
             'bad_source_1': {
-                A: Local('bad_target_2'),  # invalid but omitted bad target
+                A: Local('bad_target_2'),  # invalid, but omitted in check
+                                           # since target state doesn't exist
             },
             'left_A': {
                 A: T('left_A'),  # loop
                 B: T('left'),
             },
             'left_B': {
-                A: Local('left_A')  # invalid, not a parent
+                A: Local('left_A')  # invalid (not a parent-child relationship)
             },
             'right_A': {
                 A: T('left_B'),
@@ -401,12 +403,10 @@ class Test_structural_analysis(object):
 
         assert f('left', False) == sorted([
             ('bad_source_2', 'A'),
-            ('right', 'A'),
             ('left_A', 'B')])
 
         assert f('left', True) == sorted([
             ('bad_source_2', 'A'),
-            ('right', 'A'),
             ('left_A', 'B'),
             ('left', 'B')])
 
@@ -439,12 +439,12 @@ class Test_structural_analysis(object):
                                                          self.trans)]
         assert sorted(res_tuples) == sorted([
             ('left_B', 'A', 'left_A'),
-            ('right', 'A', 'left'),
+            ('right', 'A', 'left_A'),
             ('right', 'B', 'right'),
         ])
 
     def test_find_unreachable_states(self):
-        #t = _find_unreachable_states(self.hsm.flattened, self.trans)
-        #t
-        # TODO
-        pass
+        names = [st.name for st in
+                 _find_unreachable_states(self.hsm.flattened, self.trans)]
+        # TODO: 'right_A' should be seen as unreachable
+        assert sorted(names) == sorted(['middle', 'mid_A', 'right_B', 'bad'])

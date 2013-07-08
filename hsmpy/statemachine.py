@@ -171,11 +171,14 @@ def _find_invalid_local_transitions(flat_state_list, trans_dict):
 
 def _find_unreachable_states(flat_state_list, trans_dict):
     # state is unreachable if no transitions are coming into it
-    # AND also none of its substates (TODO)
-    unreachable = [st.name for st in flat_state_list
-                   if not _get_incoming_transitions(st.name,
-                                                    include_loops=False)]
-    return unreachable
+    # AND also into none of its substates
+    # TODO: revisit, this is a weak definition since it will mark an island
+    # with two states that point at each other as reachable
+    def is_reachable(state):
+        return (_get_incoming_transitions(state.name, trans_dict, False) or
+                any([is_reachable(ch) for ch in _get_children(state)]))
+
+    return [st for st in flat_state_list if not is_reachable(st)]
 
 
 def _validate(flat_state_list):
