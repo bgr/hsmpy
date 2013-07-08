@@ -13,18 +13,22 @@ class Transition(object):
         self.action = action
         self.guard = guard
 
+    def __repr__(self):
+        return "{0} to '{1}'".format(self.__class__.__name__, self.target)
+
 
 class LocalTransition(Transition):
     pass
 
-
-#class LoopTransition(Transition):
-    #def __init__(self, action=None, guard=None):
-        #super(self).__init__(None, action, guard)
+# TODO: maybe reintroduce LoopTransition
 
 
 class State(object):
     interests = {}  # override
+
+    def __init__(self, name='unnamed_state'):
+        self.name = name
+        self.states = {}  # for cleaner code
 
     def enter(self):  # override
         pass
@@ -32,43 +36,40 @@ class State(object):
     def exit(self):  # override
         pass
 
+    def __repr__(self):
+        return "{0} '{1}'".format(self.__class__.__name__, self.name)
+
+    def __getitem__(self, key):
+        return self.states[key]
+
 
 class CompositeState(State):
-    def __init__(self, states):
+    def __init__(self, states, name='unnamed_state'):
+        self.name = name
         self.states = states
+
 
 # after bundling states and transitions by calling HSM(states, transitions)
 # states will get additional properties: _hsm, name
 
 
-def _traverse_and_wire_up(hsm, states_dict, parent_state=None):
-    traversed = []  # will contain state instances
-
-    # traverse state tree
-    for key_name, state in states_dict.items():
-        state._parent = parent_state  # used internally for traversing
-        state.name = key_name  # give name to state
-        state._hsm = hsm       # make state know about its HSM
-        traversed += [state]   # add to traversed list
-        if isinstance(state, CompositeState):
-            if not state.states or len(state.states) == 0:
-                raise ValueError("Composite state must have substates")
-                # TODO: maybe extract this, make traversal side-effect free
-            traversed += _traverse_and_wire_up(state.states, state)
-
-    return traversed
+def _get_children(parent_state):
+    direct_children = parent_state.states.values()
+    return direct_children + [ch for dir_ch in direct_children
+                              for ch in _get_children(dir_ch)]
 
 
-def _find_incoming_trans(target_state_name, trans_dict, include_loops=False):
+def _find_incoming_transitions(target_state_name, trans_dict,
+                               include_loops=False):
     found = []
-    for source_state_name, outgoing_trans in trans_dict.values():
+    for source_state_name, outgoing_trans in trans_dict.items():
         for event, tran in outgoing_trans.items():
             is_loop = (target_state_name == source_state_name)
             if (tran.target == target_state_name
                     and (include_loops or not is_loop)):
                     # this ^ will be false only when it's a loop
                     # and include_loops is False
-                found += [(event, tran)]
+                found += [(source_state_name, event, tran)]
     return found
 
 
@@ -90,12 +91,38 @@ def _find_duplicates(ls):
     return [el for el, n in collections.Counter(ls).items() if n > 1]
 
 
-def _find_transitions_with_nonexistent_targets(state_list, trans_dict):
-    # TODO
-    pass
+def _find_duplicate_names(ls):
+    return _find_duplicates([st.name for st in ls])
 
 
-def _find_invalid_local_transitions(state_list, trans_dict):
+def _find_nonexistent_transition_sources(flat_state_list, trans_dict):
+    state_names = [st.name for st in flat_state_list]
+    return [name for name in trans_dict.keys() if name not in state_names]
+
+
+def _find_nonexistent_transition_targets(flat_state_list, trans_dict):
+    state_names = [st.name for st in flat_state_list]
+    return [tran.target
+            for dct in trans_dict.values()  # transitions dict for state
+            for tran in dct.values()  # transition in state's transitions dict
+            if tran.target not in state_names]
+
+
+def _find_missing_initial_transitions(flat_state_list, trans_dict):
+    composite_names = [st.name for st in flat_state_list
+                       if isinstance(st, CompositeState)]
+    return [sn for sn in composite_names
+            if (trans_dict.get(sn) is None or
+                trans_dict.get(sn).get('initial') is None)]
+
+
+def _find_invalid_initial_transitions(flat_state_list, trans_dict):
+    composite_names = [st.name for st in flat_state_list
+                       if isinstance(st, CompositeState)]
+    return None
+
+
+def _find_invalid_local_transitions(flat_state_list, trans_dict):
     # TODO
     # local transitions must be from superstate to substate or vice versa
     # they cause either exits (from substate to superstate),
@@ -105,32 +132,38 @@ def _find_invalid_local_transitions(state_list, trans_dict):
     pass
 
 
-def _validate(state_list):
-    if not len(state_list) == 1:
+def _find_unreachable_states(flat_state_list, trans_dict):
+    # state is unreachable if no transitions are coming into it
+    # AND also none of its substates (TODO)
+    unreachable = [st.name for st in flat_state_list
+                   if not _find_incoming_transitions(st.name,
+                                                     include_loops=False)]
+    return unreachable
+
+
+def _validate(flat_state_list):
+    if not len(flat_state_list) == 1:
         raise ValueError("Given state structure should have "
                          "exactly one top state")
 
-    duplicate_names = _find_duplicates(state_list)
+    duplicate_names = _find_duplicate_names(flat_state_list)
     if duplicate_names:
         raise ValueError("Found duplicate state "
                          "names: {0}".format(duplicate_names))
 
-    duplicate_instances = _find_duplicates([st.name for st in state_list])
+    duplicate_instances = _find_duplicates(flat_state_list)
     if duplicate_instances:
         raise ValueError("Found duplicate state "
                          "instances: {0}".format(duplicate_instances))
 
-    unreachable = [st.name for st in state_list
-                   if not _find_incoming_trans(st.name, include_loops=False)]
+    unreachable = _find_unreachable_states(states_dict)
     if unreachable:
         raise ValueError("Found unreachable "
                          "states: {0}".format(', '.join(unreachable)))
 
-    # TODO: _find_transitions_with_nonexistent_targets
-    # TODO: _find_invalid_local_transitions
-    # TODO: find loops and raise if loop is declared using local transition
-    # TODO: make sure transitions for composite states have initial tran
-    # TODO: make sure transitions for basic states don't have initial tran
+    #if not state.states or len(state.states) == 0:
+        #raise ValueError("Composite state must have substates")
+    # TODO: add rest of the validation checks, move to HSM maybe
 
 
 class HSM(object):
@@ -142,9 +175,19 @@ class HSM(object):
         self._log = []
         self._running = False
 
-        state_list = _traverse_and_wire_up(self, self.states)
+        self.flattened = self._traverse_and_wire_up(self.states)
         # TODO: _validate
 
+    def _traverse_and_wire_up(self, states_dict, parent_state=None):
+        traversed = []  # will contain flattened subtree of state instances
+        # traverse state tree
+        for key_name, state in states_dict.items():
+            state._parent = parent_state  # make state know its parent state
+            state.name = key_name  # make state know its name
+            state._hsm = self      # make state know about its HSM
+            traversed += [state]   # add state to traversed list
+            traversed += self._traverse_and_wire_up(state.states, state)
+        return traversed
 
     def start(self):
         assert not self._running
