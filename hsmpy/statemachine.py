@@ -59,8 +59,21 @@ def _get_children(parent_state):
                               for ch in _get_children(dir_ch)]
 
 
-def _find_incoming_transitions(target_state_name, trans_dict,
-                               include_loops=False):
+def _get_state_by_name(state_name, flat_state_list):
+    found = [st for st in flat_state_list if st.name == state_name]
+    if len(found) == 0:
+        return None
+        #raise LookupError("State with name '{0}' "
+                          #"not found".format(state_name))
+    if len(found) > 1:
+        raise LookupError("Multiple states with name '{0}' "
+                          "found".format(state_name))
+    return found[0]
+
+
+def _get_incoming_transitions(target_state_name, trans_dict,
+                              include_loops=False):
+    # TODO: change to list comperhensions
     found = []
     for source_state_name, outgoing_trans in trans_dict.items():
         for event, tran in outgoing_trans.items():
@@ -73,15 +86,15 @@ def _find_incoming_transitions(target_state_name, trans_dict,
     return found
 
 
-def _path_from_root(to_state):
+def _get_path_from_root(to_state):
     if to_state._parent is None:
         return [to_state]
-    return _path_from_root(to_state._parent) + [to_state]
+    return _get_path_from_root(to_state._parent) + [to_state]
 
 
-def _common_parent(state_A, state_B):
-    path_A = _path_from_root(state_A)
-    path_B = _path_from_root(state_B)
+def _get_common_parent(state_A, state_B):
+    path_A = _get_path_from_root(state_A)
+    path_B = _get_path_from_root(state_B)
     common_path = [a for a, b in zip(path_A, path_B) if a == b]
     return common_path[-1]
 
@@ -109,35 +122,59 @@ def _find_nonexistent_transition_targets(flat_state_list, trans_dict):
 
 
 def _find_missing_initial_transitions(flat_state_list, trans_dict):
-    composite_names = [st.name for st in flat_state_list
-                       if isinstance(st, CompositeState)]
-    return [sn for sn in composite_names
-            if (trans_dict.get(sn) is None or
-                trans_dict.get(sn).get('initial') is None)]
+    composites = [st for st in flat_state_list
+                  if isinstance(st, CompositeState)]
+    return [st for st in composites
+            if (trans_dict.get(st.name) is None or
+                trans_dict.get(st.name).get('initial') is None)]
 
 
 def _find_invalid_initial_transitions(flat_state_list, trans_dict):
-    composite_names = [st.name for st in flat_state_list
-                       if isinstance(st, CompositeState)]
-    return None
+    # composite states with initial transitions that are defined
+    # as local or have target which is not a child
+    without = _find_missing_initial_transitions(flat_state_list, trans_dict)
+    composites = [st for st in flat_state_list
+                  if isinstance(st, CompositeState) and st not in without]
+
+    is_local = lambda tran: isinstance(tran, LocalTransition)
+    get_init_tran = lambda state: trans_dict[state.name]['initial']
+
+    return [st for st in composites
+            if is_local(get_init_tran(st)) or
+            _get_state_by_name(get_init_tran(st).target, flat_state_list)
+            not in _get_children(st)]
 
 
 def _find_invalid_local_transitions(flat_state_list, trans_dict):
-    # TODO
-    # local transitions must be from superstate to substate or vice versa
+    # local transitions must be from superstate to substate or
+    # vice versa (source and target must be in parent-child relationship).
     # they cause either exits (from substate to superstate),
-    # or entries (from superstate to substate), not both
-    # if isinstance(tran, LocalTransition) and
-    #         _common_parent(source, target) not in [source, target]:
-    pass
+    # or entries (from superstate to substate), not both.
+    # also local cannot be loops
+    bad_sources = _find_nonexistent_transition_sources(flat_state_list,
+                                                       trans_dict)
+    bad_targets = _find_nonexistent_transition_targets(flat_state_list,
+                                                       trans_dict)
+    bad_state_names = bad_sources + bad_targets
+
+    get_by_name = lambda name: _get_state_by_name(name, flat_state_list)
+    common_parent = lambda name_a, name_b: _get_common_parent(
+        get_by_name(name_a), get_by_name(name_b)).name
+
+    return [(st_name, evt, tran) for st_name, outgoing in trans_dict.items()
+            for evt, tran in outgoing.items()
+            if st_name not in bad_state_names and
+            isinstance(tran, LocalTransition) and (
+            st_name == tran.target or  # loop
+            common_parent(st_name, tran.target) not in [st_name, tran.target])]
 
 
 def _find_unreachable_states(flat_state_list, trans_dict):
     # state is unreachable if no transitions are coming into it
     # AND also none of its substates (TODO)
     unreachable = [st.name for st in flat_state_list
-                   if not _find_incoming_transitions(st.name,
-                                                     include_loops=False)]
+                   if not _get_incoming_transitions(st.name,
+                                                    include_loops=False)]
     return unreachable
 
 
@@ -156,7 +193,7 @@ def _validate(flat_state_list):
         raise ValueError("Found duplicate state "
                          "instances: {0}".format(duplicate_instances))
 
-    unreachable = _find_unreachable_states(states_dict)
+    unreachable = _find_unreachable_states()
     if unreachable:
         raise ValueError("Found unreachable "
                          "states: {0}".format(', '.join(unreachable)))
@@ -205,7 +242,7 @@ class StateMachine(object):
         self._eb = eventbus
         self._running = False
         self._tmap = transition_map.copy()
-        null_state = NullState()
+        null_state = None  # NullState()
         self._tmap.update({
             null_state: [ Transition('start', initial_state) ]
         })
