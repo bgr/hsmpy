@@ -28,7 +28,9 @@ class State(object):
 
     def __init__(self, name='unnamed_state'):
         self.name = name
-        self.states = {}  # for cleaner code
+        self.states = {}  # for cleaner code, only CompositeState has substates
+        self._hsm = None
+        self._parent = None
 
     def enter(self):  # override
         pass
@@ -45,13 +47,68 @@ class State(object):
 
 class CompositeState(State):
     def __init__(self, states, name='unnamed_state'):
-        self.name = name
+        super(CompositeState, self).__init__(name)
         self.states = states
 
 
-# after bundling states and transitions by calling HSM(states, transitions)
-# states will get additional properties: _hsm, name
+class HSM(object):
+    def __init__(self, states, transitions):
+        # states tree must have single state as root
+        self.states = states
+        self.trans = transitions
+        self.data = object()
+        self._log = []
+        self._running = False
 
+        self.flattened = self._traverse_and_wire_up(self.states)
+        # TODO: _validate
+
+    def _traverse_and_wire_up(self, states_dict, parent_state=None):
+        traversed = []  # will contain flattened subtree of state instances
+        # traverse state tree
+        for key_name, state in states_dict.items():
+            state._parent = parent_state  # make state know its parent state
+            state.name = key_name  # make state know its name
+            state._hsm = self      # make state know about its HSM
+            traversed += [state]   # add state to traversed list
+            traversed += self._traverse_and_wire_up(state.states, state)
+        return traversed
+
+    def start(self):
+        assert not self._running
+        if not self._attempt_transition('start'):
+            raise RuntimeError("State machine couldn't start, "
+                               "this shouldn't ever happen")
+        self._running = True
+
+    def validate(self):
+        # TODO
+        if not len(self.flattened) == 1:
+            raise ValueError("Given state structure should have "
+                             "exactly one top state")
+
+        duplicate_names = _find_duplicate_names(self.flattened)
+        if duplicate_names:
+            raise ValueError("Found duplicate state "
+                             "names: {0}".format(duplicate_names))
+
+        duplicate_instances = _find_duplicates(self.flattened)
+        if duplicate_instances:
+            raise ValueError("Found duplicate state "
+                             "instances: {0}".format(duplicate_instances))
+
+        unreachable = _find_unreachable_states()
+        if unreachable:
+            raise ValueError("Found unreachable "
+                             "states: {0}".format(', '.join(unreachable)))
+
+        #if not state.states or len(state.states) == 0:
+            #raise ValueError("Composite state must have substates")
+        # TODO: add rest of the validation checks, move to HSM maybe
+
+
+
+# helper functions:
 
 def _get_children(parent_state):
     direct_children = parent_state.states.values()
@@ -73,7 +130,6 @@ def _get_state_by_name(state_name, flat_state_list):
 
 def _get_incoming_transitions(target_state_name, trans_dict,
                               include_loops=False):
-    # TODO: change to list comperhensions
     found = []
     for source_state_name, outgoing_trans in trans_dict.items():
         for event, tran in outgoing_trans.items():
@@ -98,6 +154,8 @@ def _get_common_parent(state_A, state_B):
     common_path = [a for a, b in zip(path_A, path_B) if a == b]
     return common_path[-1]
 
+
+# validation methods:
 
 def _find_duplicates(ls):
     import collections
@@ -190,61 +248,6 @@ def _find_unreachable_states(top_state, flat_state_list, trans_dict):
     reachable = visit(top_state)
     return [st for st in flat_state_list if st not in reachable]
 
-
-def _validate(flat_state_list):
-    if not len(flat_state_list) == 1:
-        raise ValueError("Given state structure should have "
-                         "exactly one top state")
-
-    duplicate_names = _find_duplicate_names(flat_state_list)
-    if duplicate_names:
-        raise ValueError("Found duplicate state "
-                         "names: {0}".format(duplicate_names))
-
-    duplicate_instances = _find_duplicates(flat_state_list)
-    if duplicate_instances:
-        raise ValueError("Found duplicate state "
-                         "instances: {0}".format(duplicate_instances))
-
-    unreachable = _find_unreachable_states()
-    if unreachable:
-        raise ValueError("Found unreachable "
-                         "states: {0}".format(', '.join(unreachable)))
-
-    #if not state.states or len(state.states) == 0:
-        #raise ValueError("Composite state must have substates")
-    # TODO: add rest of the validation checks, move to HSM maybe
-
-
-class HSM(object):
-    def __init__(self, states, transitions):
-        # states tree must have single state as root
-        self.states = states
-        self.trans = transitions
-        self.data = object()
-        self._log = []
-        self._running = False
-
-        self.flattened = self._traverse_and_wire_up(self.states)
-        # TODO: _validate
-
-    def _traverse_and_wire_up(self, states_dict, parent_state=None):
-        traversed = []  # will contain flattened subtree of state instances
-        # traverse state tree
-        for key_name, state in states_dict.items():
-            state._parent = parent_state  # make state know its parent state
-            state.name = key_name  # make state know its name
-            state._hsm = self      # make state know about its HSM
-            traversed += [state]   # add state to traversed list
-            traversed += self._traverse_and_wire_up(state.states, state)
-        return traversed
-
-    def start(self):
-        assert not self._running
-        if not self._attempt_transition('start'):
-            raise RuntimeError("State machine couldn't start, "
-                               "this shouldn't ever happen")
-        self._running = True
 
 
 # old deprecated code below

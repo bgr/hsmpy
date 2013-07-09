@@ -204,6 +204,7 @@ class Test_get_common_parent(object):
         assert _get_common_parent(right_A_1, right_B).name == 'right'
 
 
+
 class Test_find_duplicates(object):
 
     def test_empty(self):
@@ -294,7 +295,9 @@ class Test_find_duplicates(object):
         assert sorted(dups) == sorted(['left', 'right', 'left_B'])
 
 
+
 class Test_structural_analysis(object):
+
     def setup_class(self):
         A = 'A'  # mock events
         B = 'B'
@@ -378,12 +381,14 @@ class Test_structural_analysis(object):
 
         assert names(self.states['top']['right']['right_A']) == []
 
+
     def test_get_state_by_name(self):
         f = lambda name: _get_state_by_name(name, self.hsm.flattened)
         assert f('top') == self.states['top']
         assert f('left') == self.states['top']['left']
         assert f('mid_A') == self.states['top']['middle']['mid_A']
         assert f('right_B') == self.states['top']['right']['right_B']
+
 
     def test_get_incoming_trans(self):
         # exclude Transition objects from result tuples for cleaner checks
@@ -413,25 +418,30 @@ class Test_structural_analysis(object):
         assert f('right_B', False) == []
         assert f('right_B', True) == [('right_B', 'A')]
 
+
     def test_find_nonexistent_transition_sources(self):
         t = _find_nonexistent_transition_sources(self.hsm.flattened,
                                                  self.trans)
         assert sorted(t) == sorted(['bad_source_1', 'bad_source_2'])
+
 
     def test_find_nonexistent_transition_targets(self):
         t = _find_nonexistent_transition_targets(self.hsm.flattened,
                                                  self.trans)
         assert sorted(t) == sorted(['bad_target_1', 'bad_target_2'])
 
+
     def test_find_missing_initial_transitions(self):
         func = _find_missing_initial_transitions
         names = [st.name for st in func(self.hsm.flattened, self.trans)]
         assert sorted(names) == sorted(['left', 'bad'])
 
+
     def test_find_invalid_initial_transitions(self):
         func = _find_invalid_initial_transitions
         names = [st.name for st in func(self.hsm.flattened, self.trans)]
         assert sorted(names) == sorted(['top', 'middle', 'right'])
+
 
     def test_find_invalid_local_transitions(self):
         res_tuples = [(src, evt, tran.target) for src, evt, tran
@@ -442,6 +452,7 @@ class Test_structural_analysis(object):
             ('right', 'A', 'left_A'),
             ('right', 'B', 'right'),
         ])
+
 
     def test_find_unreachable_states(self):
         names = [st.name for st in _find_unreachable_states(self.states['top'],
