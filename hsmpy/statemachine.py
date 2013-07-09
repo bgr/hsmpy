@@ -169,16 +169,26 @@ def _find_invalid_local_transitions(flat_state_list, trans_dict):
             common_parent(st_name, tran.target) not in [st_name, tran.target])]
 
 
-def _find_unreachable_states(flat_state_list, trans_dict):
-    # state is unreachable if no transitions are coming into it
-    # AND also into none of its substates
-    # TODO: revisit, this is a weak definition since it will mark an island
-    # with two states that point at each other as reachable
-    def is_reachable(state):
-        return (_get_incoming_transitions(state.name, trans_dict, False) or
-                any([is_reachable(ch) for ch in _get_children(state)]))
+def _find_unreachable_states(top_state, flat_state_list, trans_dict):
+    # check if state can be reached by recursively following
+    # all transitions going out from top state
+    def visit(state, visited=set()):  # instantiating should be ok in this case
+        if state in visited:
+            return set()
+        visited.add(state)
+        # all state's parents are reachable
+        # visit transition targets going out of every parent state
+        for parent in _get_path_from_root(state):
+            visited.update(visit(parent, visited))
+        # visit transition targets going out of current state
+        for tran in trans_dict.get(state.name, {}).values():
+            target_state = _get_state_by_name(tran.target, flat_state_list)
+            if target_state is not None:  # nonexistent state in trans_dict
+                visited.update(visit(target_state, visited))
+        return visited
 
-    return [st for st in flat_state_list if not is_reachable(st)]
+    reachable = visit(top_state)
+    return [st for st in flat_state_list if st not in reachable]
 
 
 def _validate(flat_state_list):

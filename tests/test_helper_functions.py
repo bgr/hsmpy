@@ -444,7 +444,8 @@ class Test_structural_analysis(object):
         ])
 
     def test_find_unreachable_states(self):
-        names = [st.name for st in
-                 _find_unreachable_states(self.hsm.flattened, self.trans)]
-        # TODO: 'right_A' should be seen as unreachable
-        assert sorted(names) == sorted(['middle', 'mid_A', 'right_B', 'bad'])
+        names = [st.name for st in _find_unreachable_states(self.states['top'],
+                                                            self.hsm.flattened,
+                                                            self.trans)]
+        assert sorted(names) == sorted(['middle', 'mid_A', 'right_A',
+                                        'right_B', 'bad'])
