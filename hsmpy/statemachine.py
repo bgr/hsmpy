@@ -6,9 +6,9 @@ _log = logging.getLogger(__name__)
 class Transition(object):
     def __init__(self, target, action=None, guard=None):
         if action is None:
-            action = lambda: None
+            action = lambda hsm: None  # action does nothing by default
         if guard is None:
-            guard = lambda: True
+            guard = lambda hsm: True  # make guard always pass by default
         self.target = target
         self.action = action
         self.guard = guard
@@ -19,6 +19,11 @@ class Transition(object):
 
 class LocalTransition(Transition):
     pass
+
+
+class InternalTransition(Transition):
+    def __init__(self, action=None, guard=None):
+        super(InternalTransition, self).__init__(None, action, guard)
 
 # TODO: maybe reintroduce LoopTransition
 
@@ -155,6 +160,20 @@ def _get_common_parent(state_A, state_B):
     return common_path[-1]
 
 
+def _get_response(source_state, for_event, trans_dict, hsm):
+    tran = trans_dict.get(source_state.name, {}).get(for_event)
+    if tran is None:  # maybe it has internal transition defined
+        tran = source_state.interests.get(for_event)
+    print source_state, tran
+    if tran is not None:
+        if tran.guard(hsm):  # only match if transition guard passes
+            return (source_state, tran)
+    if source_state._parent is not None:  # look up the hierarchy
+        return _get_response(source_state._parent, for_event, trans_dict, hsm)
+    return (None, None)
+
+
+
 # validation methods:
 
 def _find_duplicates(ls):
@@ -188,8 +207,9 @@ def _find_missing_initial_transitions(flat_state_list, trans_dict):
 
 
 def _find_invalid_initial_transitions(flat_state_list, trans_dict):
-    # composite states with initial transitions that are defined
-    # as local or have target which is not a child
+    # composite states with initial transitions that are defined as local
+    # OR have target which is not a child of that state
+    # TODO: OR have guards
     without = _find_missing_initial_transitions(flat_state_list, trans_dict)
     composites = [st for st in flat_state_list
                   if isinstance(st, CompositeState) and st not in without]

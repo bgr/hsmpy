@@ -82,7 +82,7 @@ def make_miro_machine():
     transitions = {
         'top': {
             'initial': T('s2', action=set_foo_False),
-            TERMINATE: T('final')
+            TERMINATE: T('final'),
         },
         's': {
             'initial': T('s11'),
@@ -93,7 +93,8 @@ def make_miro_machine():
             A: T('s1'),  # loop into self
             B: Local('s11'),
             C: T('s2'),
-            D: Local('s', guard=foo_is_False, action=set_foo_True)
+            D: Local('s', guard=foo_is_False, action=set_foo_True),
+            F: T('s211'),
         },
         's11': {
             D: Local('s1', guard=foo_is_True, action=set_foo_False),
@@ -101,12 +102,15 @@ def make_miro_machine():
             H: Local('s1'),
         },
         's2': {
+            'initial': T('s211'),
             C: T('s1'),
             F: T('s11'),
         },
         's21': {
+            'initial': T('s211'),
             A: T('s21'),  # loop into self
             B: Local('s211'),
+            G: T('s1'),
         },
         's211': {
             D: Local('s21'),
