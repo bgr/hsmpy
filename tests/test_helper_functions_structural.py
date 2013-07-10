@@ -41,10 +41,12 @@ class Test_get_path(object):
         right_A_1 = MockState(parent=right_A)
         right_A_2 = MockState(parent=right_A)
 
-        assert _get_path(root, left) == ([], root, [left])
+        assert _get_path(root, root) == ([], root, [])
+        assert _get_path(left, left) == ([], left, [])
         assert _get_path(left_A, left_B) == ([left_A], left, [left_B])
         assert _get_path(left_B, left_A) == ([left_B], left, [left_A])
         assert _get_path(middle, root) == ([middle], root, [])
+        assert _get_path(root, middle) == ([], root, [middle])
         assert _get_path(middle_A, left_A) == ([middle_A, middle],
                                                root, [left, left_A])
         assert _get_path(right_A_1, left) == ([right_A_1, right_A, right],
@@ -225,10 +227,12 @@ class Test_get_common_parent(object):
         right_B_1 = MockState(parent=right_B)
 
         assert _get_common_parent(left, middle) == root
+        assert _get_common_parent(middle, left) == root
         assert _get_common_parent(left, right) == root
         assert _get_common_parent(middle, right) == root
         assert _get_common_parent(middle, root) == root
         assert _get_common_parent(left_A, root) == root
+        assert _get_common_parent(root, left_A) == root
         assert _get_common_parent(left_A, left) == left
         assert _get_common_parent(left_A, left_B) == left
         assert _get_common_parent(left_A, middle) == root
@@ -334,9 +338,7 @@ class Test_find_duplicates(object):
             })
         }
         hsm = HSM(states, {})
-        print hsm.flattened
         dups = _find_duplicates(hsm.flattened)
-        print dups
         assert sorted(dups) == sorted([duplicate_1, duplicate_2,
                                        composite_dupl['b'], composite_dupl])
 

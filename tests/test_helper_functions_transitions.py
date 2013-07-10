@@ -18,10 +18,10 @@ class NONEXISTING_EVENT(Event):
 
 
 responding_reguardless = [
-    ('top', TERMINATE, 'top', 'final'),
-    ('s', TERMINATE, 'top', 'final'),
-    ('s11', TERMINATE, 'top', 'final'),
-    ('s211', TERMINATE, 'top', 'final'),
+    ('s', TERMINATE, 's', 'final'),
+    ('s11', TERMINATE, 's', 'final'),
+    ('s211', TERMINATE, 's', 'final'),
+    ('top', 'initial', 'top', 's2'),
     ('s', 'initial', 's', 's11'),
     ('s1', 'initial', 's1', 's11'),
     ('s2', 'initial', 's2', 's211'),
@@ -31,6 +31,7 @@ responding_reguardless = [
     ('s211', C, 's2', 's1'),
     ('s11', E, 's', 's11'),
     ('s211', A, 's21', 's21'),
+    ('s21', A, 's21', 's21'),
     ('s11', G, 's11', 's211'),
     ('s11', F, 's1', 's211'),
     ('s11', B, 's1', 's11'),
@@ -118,51 +119,56 @@ class Test_get_response_considering_guards(object):
 _ = 'ignored'  # where used, it means the value is not important
 
 exits_and_entries = [
-    ('s11', D, False, True, True,
-     ['s11', 's1'],
-     ['s1', 's11']),
+    ('s11', D, False, True,
+     ['s11-exit', 's1-exit'],
+     ['s1-D', 's-init', 's1-entry', 's11-entry']),
 
-    ('s11', D, True, False, True,
-     ['s11'],
-     ['s11']),
+    ('s11', D, True, False,
+     ['s11-exit'],
+     ['s11-D', 's1-init', 's11-entry']),
 
-    ('s11', TERMINATE, _, _, True,
-     ['s11', 's1', 's'],
-     ['final']),
+    ('s11', TERMINATE, _, _,
+     ['s11-exit', 's1-exit', 's-exit'],
+     ['s-TERMINATE', 'final-entry']),
 
-    ('s11', A, _, _, True,
-     ['s11', 's1'],
-     ['s1', 's11']),
+    ('s11', A, _, _,
+     ['s11-exit', 's1-exit'],
+     ['s1-A', 's1-entry', 's1-init', 's11-entry']),
 
-    ('top', 'initial', _, False, True,
+    ('top', 'initial', _, False,
      [],
-     ['s', 's2', 's21', 's211']),
+     ['top-init', 's-entry', 's2-entry', 's2-init', 's21-entry',
+      's211-entry']),
 
-    ('s211', H, _, _, True,
-     ['s211', 's21', 's2'],
-     ['s1', 's11']),
+    ('s211', H, _, _,
+     ['s211-exit', 's21-exit', 's2-exit'],
+     ['s211-H', 's-init', 's1-entry', 's11-entry']),
 
-    ('s211', G, _, _, True,
-     ['s211', 's21', 's2'],
-     ['s1', 's11']),
+    ('s211', G, _, _,
+     ['s211-exit', 's21-exit', 's2-exit'],
+     ['s21-G', 's1-entry', 's1-init', 's11-entry']),
 
-    ('s211', A, _, _, True,
-     ['s211', 's21'],
-     ['s21', 's211']),
+    ('s211', A, _, _,
+     ['s211-exit', 's21-exit'],
+     ['s21-A', 's21-entry', 's21-init', 's211-entry']),
 
-    ('s11', B, _, _, True,
-     ['s11'],
-     ['s11']),
+    ('s11', B, _, _,
+     ['s11-exit'],
+     ['s1-B', 's11-entry']),
 
-    ('s21', H, _, _, False,
+    ('s211', B, _, _,
+     ['s211-exit'],
+     ['s21-B', 's211-entry']),
+
+    ('s21', H, _, _,
      [],
      []),
 
-    ('s211', NONEXISTING_EVENT, True, True, False,
+    ('s211', NONEXISTING_EVENT, True, True,
      [],
      []),
 
-    ('s211', NONEXISTING_EVENT, False, False, False,
+    ('s211', NONEXISTING_EVENT, False, False,
      [],
      []),
 ]
@@ -174,25 +180,28 @@ class Test_transition_sequences(object):
         self.states, self.trans = make_miro_machine()
         self.hsm = HSM(self.states, self.trans)
 
-
     @pytest.mark.parametrize(('from_state', 'on_event', 'foo_before',
-                              'foo_after', 'has_action', 'expected_exits',
+                              'foo_after', 'expected_exits',
                               'expected_entries'), exits_and_entries)
     def test_run(self, from_state, on_event, foo_before, foo_after,
-                 has_action, expected_exits, expected_entries):
+                 expected_exits, expected_entries):
         mock_hsm = MockHSM()
         mock_hsm.data.foo = foo_before
-        exits, entries, action = _get_transition_sequence(from_state, on_event,
-                                                          self.states,
-                                                          self.trans, mock_hsm)
-        exits = [st.name for st in exits]
-        entries = [st.name for st in entries]
-        assert exits == expected_exits
-        assert entries == expected_entries
+        from_state = _get_state_by_name(from_state, self.hsm.flattened)
+        exits, entries = _get_transition_sequence(from_state, on_event,
+                                                  self.hsm.flattened,
+                                                  self.trans, mock_hsm)
+        exits_names = [str(act) for act in exits]
+        entries_names = [str(act) for act in entries]
+        print from_state, on_event
+        print exits_names
+        print entries_names
+        assert exits_names == expected_exits
+        assert entries_names == expected_entries
 
-        if has_action:
-            assert action is not None
-            action(mock_hsm)
+        # perform actions to update 'foo' value
+        [exit(mock_hsm) for exit in exits]
+        [enter(mock_hsm) for enter in entries]
 
-        if foo_after != _:
+        if foo_after != _:  # care about the value of 'foo'
             assert mock_hsm.data.foo == foo_after

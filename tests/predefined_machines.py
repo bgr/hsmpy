@@ -82,11 +82,11 @@ def make_miro_machine():
     transitions = {
         'top': {
             'initial': T('s2', action=set_foo_False),
-            TERMINATE: T('final'),
         },
         's': {
             'initial': T('s11'),
             E: T('s11'),
+            TERMINATE: T('final'),
         },
         's1': {
             'initial': T('s11'),

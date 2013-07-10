@@ -34,13 +34,13 @@ class State(object):
     def __init__(self, name='unnamed_state'):
         self.name = name
         self.states = {}  # for cleaner code, only CompositeState has substates
-        self._hsm = None
+        self._hsm = None  # maybe not needed
         self._parent = None
 
-    def enter(self):  # override
+    def enter(self, hsm):  # override
         pass
 
-    def exit(self):  # override
+    def exit(self, hsm):  # override
         pass
 
     def __repr__(self):
@@ -54,6 +54,18 @@ class CompositeState(State):
     def __init__(self, states, name='unnamed_state'):
         super(CompositeState, self).__init__(name)
         self.states = states
+
+
+class Action(object):
+    def __init__(self, name, function):
+        self.name = name
+        self.function = function
+
+    def __call__(self, hsm):
+        return self.function(hsm)
+
+    def __repr__(self):
+        return self.name
 
 
 class HSM(object):
@@ -173,13 +185,64 @@ def _get_response(source_state, for_event, trans_dict, hsm):
     tran = trans_dict.get(source_state.name, {}).get(for_event)
     if tran is None:  # maybe it has internal transition defined
         tran = source_state.interests.get(for_event)
-    print source_state, tran
     if tran is not None:
         if tran.guard(hsm):  # only match if transition guard passes
             return (source_state, tran)
     if source_state._parent is not None:  # look up the hierarchy
         return _get_response(source_state._parent, for_event, trans_dict, hsm)
     return (None, None)
+
+
+def _get_transition_sequence(source_state, for_event,
+                             flat_state_list, trans_dict, hsm):
+    # returns (exit_action_list, entry_action_list) tuple
+    # where entry_action_list contains states and transitions
+
+    # state that responds to event might not be the source_state
+    resp_state, transition = _get_response(source_state, for_event,
+                                           trans_dict, hsm)
+    if resp_state is None:
+        return ([], [])  # nothing to exit or enter
+
+    target_state = _get_state_by_name(transition.target, flat_state_list)
+
+    action_name = lambda st, descr: '{0}-{1}'.format(st.name, descr)
+
+    exits, parent, entries = _get_path(source_state, target_state)
+
+    exits = [Action(action_name(st, 'exit'), st.exit) for st in exits]
+    entries = [Action(action_name(st, 'entry'), st.enter) for st in entries]
+
+    evt_name = 'init' if for_event == 'initial' else for_event.__name__
+    tran_action = Action(action_name(resp_state, evt_name),
+                         transition.action)
+
+    # in case of loops add exit and reentry actions for responding state
+    if resp_state is target_state:
+        exit = Action(action_name(resp_state, 'exit'), resp_state.exit)
+        enter = Action(action_name(resp_state, 'entry'), resp_state.enter)
+        exits = exits + [exit]
+        entries = [enter] + entries
+
+    # original transition action must come before any entry action
+    entries = [tran_action] + entries
+
+    # if target state is composite, follow its 'initial' transition
+    # recursively and append more entry actions to entries list
+    if isinstance(target_state, CompositeState):
+        _, more = _get_transition_sequence(target_state, 'initial',
+                                           flat_state_list, trans_dict, hsm)
+        entries += more  # cannot have exits if machine is valid
+
+    return (exits, entries)
+    # don't exit+reenter responding state in case or initial transitions
+    # OR if responding state is a parent of target and it's local transition
+    #if (is_local and resp_state is parent) or for_event == 'initial':
+    #else:
+        #exit = Action(action_name(resp_state, 'exit'), resp_state.exit)
+        #enter = Action(action_name(resp_state, 'entry'), resp_state.enter)
+        #return (exits + [exit], [enter] + entries)
+    assert False, 'this should never happen'
 
 
 
