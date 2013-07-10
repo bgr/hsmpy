@@ -208,21 +208,22 @@ def _get_transition_sequence(source_state, for_event,
 
     action_name = lambda st, descr: '{0}-{1}'.format(st.name, descr)
 
-    exits, parent, entries = _get_path(source_state, target_state)
+    exits_till_responding, _, _ = _get_path(source_state, resp_state)
+    exits_from_responding, _, entries = _get_path(resp_state, target_state)
 
+    exits = exits_till_responding + exits_from_responding
+
+    # in case of loops add exit and reentry actions for responding state
+    if resp_state is target_state:
+        exits = exits + [resp_state]
+        entries = [resp_state] + entries
+
+    # wrap in Action objects
     exits = [Action(action_name(st, 'exit'), st.exit) for st in exits]
     entries = [Action(action_name(st, 'entry'), st.enter) for st in entries]
 
     evt_name = 'init' if for_event == 'initial' else for_event.__name__
-    tran_action = Action(action_name(resp_state, evt_name),
-                         transition.action)
-
-    # in case of loops add exit and reentry actions for responding state
-    if resp_state is target_state:
-        exit = Action(action_name(resp_state, 'exit'), resp_state.exit)
-        enter = Action(action_name(resp_state, 'entry'), resp_state.enter)
-        exits = exits + [exit]
-        entries = [enter] + entries
+    tran_action = Action(action_name(resp_state, evt_name), transition.action)
 
     # original transition action must come before any entry action
     entries = [tran_action] + entries
@@ -235,14 +236,6 @@ def _get_transition_sequence(source_state, for_event,
         entries += more  # cannot have exits if machine is valid
 
     return (exits, entries)
-    # don't exit+reenter responding state in case or initial transitions
-    # OR if responding state is a parent of target and it's local transition
-    #if (is_local and resp_state is parent) or for_event == 'initial':
-    #else:
-        #exit = Action(action_name(resp_state, 'exit'), resp_state.exit)
-        #enter = Action(action_name(resp_state, 'entry'), resp_state.enter)
-        #return (exits + [exit], [enter] + entries)
-    assert False, 'this should never happen'
 
 
 
