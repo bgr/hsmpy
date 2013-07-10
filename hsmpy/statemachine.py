@@ -153,14 +153,23 @@ def _get_path_from_root(to_state):
     return _get_path_from_root(to_state._parent) + [to_state]
 
 
+def _get_path(from_state, to_state):
+    # returns (states_to_exit, common_parent, states_to_enter) tuple
+    from_path = _get_path_from_root(from_state)
+    to_path = _get_path_from_root(to_state)
+    common_path = [a for a, b in zip(from_path, to_path) if a == b]
+    common_parent = common_path[-1]
+    exits = list(reversed([st for st in from_path if st not in common_path]))
+    entries = [st for st in to_path if st not in common_path]
+    return (exits, common_parent, entries)
+
+
 def _get_common_parent(state_A, state_B):
-    path_A = _get_path_from_root(state_A)
-    path_B = _get_path_from_root(state_B)
-    common_path = [a for a, b in zip(path_A, path_B) if a == b]
-    return common_path[-1]
+    return _get_path(state_A, state_B)[1]
 
 
 def _get_response(source_state, for_event, trans_dict, hsm):
+    # returns (responding_state, transition) tuple
     tran = trans_dict.get(source_state.name, {}).get(for_event)
     if tran is None:  # maybe it has internal transition defined
         tran = source_state.interests.get(for_event)

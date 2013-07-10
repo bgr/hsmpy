@@ -1,4 +1,5 @@
-from hsmpy.statemachine import (_get_path_from_root,
+from hsmpy.statemachine import (_get_path,
+                                _get_path_from_root,
                                 _get_common_parent,
                                 _get_children,
                                 _get_state_by_name,
@@ -21,6 +22,72 @@ from hsmpy import State, CompositeState, HSM
 class MockState(object):
     def __init__(self, parent):
         self._parent = parent
+
+
+class Test_get_path(object):
+
+    def test_branching(self):
+        root = MockState(parent=None)
+
+        left = MockState(parent=root)
+        left_A = MockState(parent=left)
+        left_B = MockState(parent=left)
+
+        middle = MockState(parent=root)
+        middle_A = MockState(parent=middle)
+
+        right = MockState(parent=root)
+        right_A = MockState(parent=right)
+        right_A_1 = MockState(parent=right_A)
+        right_A_2 = MockState(parent=right_A)
+
+        assert _get_path(root, left) == ([], root, [left])
+        assert _get_path(left_A, left_B) == ([left_A], left, [left_B])
+        assert _get_path(left_B, left_A) == ([left_B], left, [left_A])
+        assert _get_path(middle, root) == ([middle], root, [])
+        assert _get_path(middle_A, left_A) == ([middle_A, middle],
+                                               root, [left, left_A])
+        assert _get_path(right_A_1, left) == ([right_A_1, right_A, right],
+                                              root, [left])
+        assert _get_path(right_A_2, left_B) == ([right_A_2, right_A, right],
+                                                root, [left, left_B])
+        assert _get_path(left_B, right_A_2) == ([left_B, left], root,
+                                                [right, right_A, right_A_2])
+        assert _get_path(right_A, root) == ([right_A, right], root, [])
+        assert _get_path(root, right_A) == ([], root, [right, right_A])
+
+    def test_with_HSM_instance(self):
+        left_B = State()
+        deep = State()
+        states = {
+            'root': CompositeState({
+                'left': CompositeState({
+                    'left_A': State(),
+                    'left_B': left_B,
+                }),
+                'middle': CompositeState({
+                    'middle_A': State(),
+                    'middle_B': State(),
+                    'middle_C': State(),
+                }),
+                'right': CompositeState({
+                    'right_A': CompositeState({
+                        'right_A_1': State(),
+                        'deep': deep,
+                        'right_A_2': State(),
+                    }),
+                    'right_B': State(),
+                })
+            })
+        }
+
+        HSM(states, {})  # wire up the state tree
+        exits, parent, entries = _get_path(deep, left_B)
+        exits = [st.name for st in exits]
+        entries = [st.name for st in entries]
+        assert exits == ['deep', 'right_A', 'right']
+        assert parent.name == 'root'
+        assert entries == ['left', 'left_B']
 
 
 class Test_get_path_from_root(object):
