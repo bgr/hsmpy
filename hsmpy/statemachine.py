@@ -208,24 +208,36 @@ def _get_transition_sequence(source_state, for_event,
 
     action_name = lambda st, descr: '{0}-{1}'.format(st.name, descr)
 
-    exits_till_responding, _, _ = _get_path(source_state, resp_state)
-    exits_from_responding, _, entries = _get_path(resp_state, target_state)
+    exits_till_resp, _, _ = _get_path(source_state, resp_state)
+    exits_from_resp, parent, entries = _get_path(resp_state, target_state)
 
-    exits = exits_till_responding + exits_from_responding
+    exits = exits_till_resp + exits_from_resp
 
-    # in case of loops add exit and reentry actions for responding state
+    # also add exit and reentry actions for responding state if transition
+    # is a LOOP transition or EXTERNAL transition (external transition goes
+    # from parent to child or child to parent just like LOCAL transition but
+    # it also exits and reenters the parent state
+    is_external_tran = (parent in [resp_state, target_state]
+                        and not isinstance(transition, LocalTransition)
+                        and not for_event == 'initial')
+    state_to_add = []
+
     if resp_state is target_state:
-        exits = exits + [resp_state]
-        entries = [resp_state] + entries
+        state_to_add = [resp_state]
+    elif is_external_tran:
+        state_to_add = [parent]
+
+    exits = exits + state_to_add
+    entries = state_to_add + entries
 
     # wrap in Action objects
     exits = [Action(action_name(st, 'exit'), st.exit) for st in exits]
     entries = [Action(action_name(st, 'entry'), st.enter) for st in entries]
 
+    # original transition action must come before any entry action
     evt_name = 'init' if for_event == 'initial' else for_event.__name__
     tran_action = Action(action_name(resp_state, evt_name), transition.action)
 
-    # original transition action must come before any entry action
     entries = [tran_action] + entries
 
     # if target state is composite, follow its 'initial' transition

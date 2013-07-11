@@ -2,8 +2,10 @@ import pytest
 from hsmpy import HSM, Event
 from hsmpy.statemachine import (_get_transition_sequence, _get_response,
                                 _get_state_by_name)
-from predefined_machines import make_miro_machine
-from predefined_machines import A, B, C, D, E, F, G, H, I, TERMINATE
+from predefined_machines import make_miro_machine, make_nested_machine
+from predefined_machines import (A, B, C, D, E, F, G, H, I, TERMINATE, AB_ex,
+                                 AC_ex, BC_ex, AB_loc, AC_loc, BC_loc, BA_ex,
+                                 CA_ex, CB_ex, BA_loc, CA_loc, CB_loc)
 
 
 class MockHSM(object):
@@ -53,8 +55,8 @@ class Test_get_response_guards_irrelevant(object):
         mock_hsm = MockHSM()
         from_state = _get_state_by_name(from_state, self.hsm.flattened)
 
-        resp_state, tran = _get_response(from_state, on_event, self.trans,
-                                         mock_hsm)
+        resp_state, tran = _get_response(from_state, on_event,
+                                         self.trans, mock_hsm)
 
         assert resp_state.name == expected_responding_state
         assert tran.target == expected_transition_target
@@ -118,7 +120,7 @@ class Test_get_response_considering_guards(object):
 
 _ = 'ignored'  # where used, it means the value is not important
 
-exits_and_entries = [
+miro_exits_and_entries = [
     ('s11', D, False, True,
      ['s11-exit', 's1-exit'],
      ['s1-D', 's-init', 's1-entry', 's11-entry']),
@@ -173,24 +175,167 @@ exits_and_entries = [
      []),
 ]
 
+nested_exits_and_entries = [
+    ('top', 'initial', _, _,
+     [],
+     ['top-init', 'A-entry', 'A-init', 'B-entry', 'B-init', 'C-entry']),
+
+    # A responding to its events
+    ('A', A, _, _,
+     ['A-exit'],
+     ['A-A', 'A-entry', 'A-init', 'B-entry', 'B-init', 'C-entry']),
+
+    ('A', AB_loc, _, _,
+     [],
+     ['A-AB_loc', 'B-entry', 'B-init', 'C-entry']),
+    ('A', AB_ex, _, _,
+     ['A-exit'],
+     ['A-AB_ex', 'A-entry', 'B-entry', 'B-init', 'C-entry']),
+
+    ('A', AC_loc, _, _,
+     [],
+     ['A-AC_loc', 'B-entry', 'C-entry']),
+
+    ('A', AC_ex, _, _,
+     ['A-exit'],
+     ['A-AC_ex', 'A-entry', 'B-entry', 'C-entry']),
+
+    # B responding to its events
+    ('B', B, _, _,
+     ['B-exit'],
+     ['B-B', 'B-entry', 'B-init', 'C-entry']),
+
+    ('B', BC_loc, _, _,
+     [],
+     ['B-BC_loc', 'C-entry']),
+
+    ('B', BC_ex, _, _,
+     ['B-exit'],
+     ['B-BC_ex', 'B-entry', 'C-entry']),
+
+    ('B', BA_loc, _, _,
+     ['B-exit'],
+     ['B-BA_loc', 'A-init', 'B-entry', 'B-init', 'C-entry']),
+
+    ('B', BA_ex, _, _,
+     ['B-exit', 'A-exit'],
+     ['B-BA_ex', 'A-entry', 'A-init', 'B-entry', 'B-init', 'C-entry']),
+
+    # C responding to its events
+    ('C', C, _, _,
+     ['C-exit'],
+     ['C-C', 'C-entry']),
+
+    ('C', CA_loc, _, _,
+     ['C-exit', 'B-exit'],
+     ['C-CA_loc', 'A-init', 'B-entry', 'B-init', 'C-entry']),
+
+    ('C', CA_ex, _, _,
+     ['C-exit', 'B-exit', 'A-exit'],
+     ['C-CA_ex', 'A-entry', 'A-init', 'B-entry', 'B-init', 'C-entry']),
+
+    ('C', CB_loc, _, _,
+     ['C-exit'],
+     ['C-CB_loc', 'B-init', 'C-entry']),
+
+    ('C', CB_ex, _, _,
+     ['C-exit', 'B-exit'],
+     ['C-CB_ex', 'B-entry', 'B-init', 'C-entry']),
+
+    # responding to A's events while in B
+    ('B', A, _, _,
+     ['B-exit', 'A-exit'],
+     ['A-A', 'A-entry', 'A-init', 'B-entry', 'B-init', 'C-entry']),
+
+    ('B', AB_loc, _, _,
+     ['B-exit'],
+     ['A-AB_loc', 'B-entry', 'B-init', 'C-entry']),
+
+    ('B', AB_ex, _, _,
+     ['B-exit', 'A-exit'],
+     ['A-AB_ex', 'A-entry', 'B-entry', 'B-init', 'C-entry']),
+
+    ('B', AC_loc, _, _,
+     ['B-exit'],
+     ['A-AC_loc', 'B-entry', 'C-entry']),
+
+    ('B', AC_ex, _, _,
+     ['B-exit', 'A-exit'],
+     ['A-AC_ex', 'A-entry', 'B-entry', 'C-entry']),
+
+    # responding to A's events while in C
+    ('C', A, _, _,
+     ['C-exit', 'B-exit', 'A-exit'],
+     ['A-A', 'A-entry', 'A-init', 'B-entry', 'B-init', 'C-entry']),
+
+    ('C', AB_loc, _, _,
+     ['C-exit', 'B-exit'],
+     ['A-AB_loc', 'B-entry', 'B-init', 'C-entry']),
+
+    ('C', AB_ex, _, _,
+     ['C-exit', 'B-exit', 'A-exit'],
+     ['A-AB_ex', 'A-entry', 'B-entry', 'B-init', 'C-entry']),
+
+    ('C', AC_loc, _, _,
+     ['C-exit', 'B-exit'],
+     ['A-AC_loc', 'B-entry', 'C-entry']),
+
+    ('C', AC_ex, _, _,
+     ['C-exit', 'B-exit', 'A-exit'],
+     ['A-AC_ex', 'A-entry', 'B-entry', 'C-entry']),
+
+    # responding to B's events while in C
+    ('C', B, _, _,
+     ['C-exit', 'B-exit'],
+     ['B-B', 'B-entry', 'B-init', 'C-entry']),
+
+    ('C', BC_loc, _, _,
+     ['C-exit'],
+     ['B-BC_loc', 'C-entry']),
+
+    ('C', BC_ex, _, _,
+     ['C-exit', 'B-exit'],
+     ['B-BC_ex', 'B-entry', 'C-entry']),
+
+    ('C', BA_loc, _, _,
+     ['C-exit', 'B-exit'],
+     ['B-BA_loc', 'A-init', 'B-entry', 'B-init', 'C-entry']),
+
+    ('C', BA_ex, _, _,
+     ['C-exit', 'B-exit', 'A-exit'],
+     ['B-BA_ex', 'A-entry', 'A-init', 'B-entry', 'B-init', 'C-entry']),
+]
+
+
+def prepend_machine_params(make_machine_func, list_of_tuples):
+    states, trans = make_machine_func()
+    hsm = HSM(states, trans)
+    return [(states, trans, hsm) + tup for tup in list_of_tuples]
+
+miro_params = prepend_machine_params(make_miro_machine,
+                                     miro_exits_and_entries)
+
+nested_params = prepend_machine_params(make_nested_machine,
+                                       nested_exits_and_entries)
+
+all_params = miro_params + nested_params
+
 
 class Test_transition_sequences(object):
 
-    def setup_class(self):
-        self.states, self.trans = make_miro_machine()
-        self.hsm = HSM(self.states, self.trans)
-
-    @pytest.mark.parametrize(('from_state', 'on_event', 'foo_before',
+    @pytest.mark.parametrize(('states', 'trans', 'hsm',
+                              'from_state', 'on_event', 'foo_before',
                               'foo_after', 'expected_exits',
-                              'expected_entries'), exits_and_entries)
-    def test_run(self, from_state, on_event, foo_before, foo_after,
-                 expected_exits, expected_entries):
+                              'expected_entries'),
+                             all_params)
+    def test_run(self, states, trans, hsm, from_state, on_event, foo_before,
+                 foo_after, expected_exits, expected_entries):
         mock_hsm = MockHSM()
         mock_hsm.data.foo = foo_before
-        from_state = _get_state_by_name(from_state, self.hsm.flattened)
+        from_state = _get_state_by_name(from_state, hsm.flattened)
         exits, entries = _get_transition_sequence(from_state, on_event,
-                                                  self.hsm.flattened,
-                                                  self.trans, mock_hsm)
+                                                  hsm.flattened, trans,
+                                                  mock_hsm)
         exits_names = [str(act) for act in exits]
         entries_names = [str(act) for act in entries]
         print from_state, on_event

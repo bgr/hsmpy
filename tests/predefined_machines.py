@@ -119,3 +119,70 @@ def make_miro_machine():
     }
 
     return (states, transitions)
+
+
+
+class AB_ex(Event): pass
+class AC_ex(Event): pass
+class BC_ex(Event): pass
+class AB_loc(Event): pass
+class AC_loc(Event): pass
+class BC_loc(Event): pass
+class BA_ex(Event): pass
+class CA_ex(Event): pass
+class CB_ex(Event): pass
+class BA_loc(Event): pass
+class CA_loc(Event): pass
+class CB_loc(Event): pass
+
+def make_nested_machine():
+    """
+        Returns (states, transitions) tuple describing the machine layout with
+        three nested states A[B[C]] (contained within 'top' state), having
+        all 15 combinations of local and external transitions and self-loops:
+
+            * loops: A-(A)->A, B-(B)->B, C-(C)->C
+            * inwards: A-(AB)->B, A-(AC)->C, B-(BC)->C (local and external)
+            * outwards: C-(CB)->B, C-(CA)->A, B-(BA)->A (local and external)
+    """
+
+    states = {
+        'top': CompositeState({
+            'A': CompositeState({
+                'B': CompositeState({
+                    'C': State(),
+                })
+            })
+        })
+    }
+
+    transitions = {
+        'top': {
+            'initial': T('A'),
+        },
+        'A': {
+            'initial': T('B'),
+            A: T('A'),
+            AB_loc: Local('B'),
+            AB_ex: T('B'),
+            AC_loc: Local('C'),
+            AC_ex: T('C'),
+        },
+        'B': {
+            'initial': T('C'),
+            B: T('B'),
+            BC_loc: Local('C'),
+            BC_ex: T('C'),
+            BA_loc: Local('A'),
+            BA_ex: T('A'),
+        },
+        'C': {
+            C: T('C'),
+            CB_loc: Local('B'),
+            CB_ex: T('B'),
+            CA_loc: Local('A'),
+            CA_ex: T('A'),
+        }
+    }
+
+    return (states, transitions)
