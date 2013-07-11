@@ -427,9 +427,13 @@ def _get_transition_sequence(source_state, for_event,
     return (exits, entries)
 
 
-def _get_events(trans_dict):
+def _get_events(flat_state_list, trans_dict):
     """Returns all events that machine is interested in listening to."""
-    pass
+    trans = [evt for outgoing in trans_dict.values()
+             for evt in outgoing.keys() if evt != 'initial']
+    internal = [evt for state in flat_state_list
+                for evt in state.interests.keys()]
+    return set(trans + internal)
 
 
 # validation methods:

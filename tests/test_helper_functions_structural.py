@@ -2,6 +2,7 @@ from hsmpy.statemachine import (_get_path,
                                 _get_path_from_root,
                                 _get_common_parent,
                                 _get_children,
+                                _get_events,
                                 _get_state_by_name,
                                 _get_incoming_transitions,
                                 _find_duplicates,
@@ -529,3 +530,27 @@ class Test_structural_analysis(object):
                                                             self.trans)]
         assert sorted(names) == sorted(['middle', 'mid_A', 'right_A',
                                         'right_B', 'bad'])
+
+
+class Test_get_events(object):
+
+    def test_miro_machine_events(self):
+        from predefined_machines import make_miro_machine
+        from predefined_machines import A, B, C, D, E, F, G, H, I, TERMINATE
+
+        states, trans = make_miro_machine()
+        hsm = HSM(states, trans)
+        event_set = _get_events(hsm.flattened, trans)
+        assert event_set == set([A, B, C, D, E, F, G, H, I, TERMINATE])
+
+    def test_nested_machine_events(self):
+        from predefined_machines import make_nested_machine
+        from predefined_machines import (A, B, C, AB_ex, AC_ex, BC_ex, AB_loc,
+                                         AC_loc, BC_loc, BA_ex, CA_ex, CB_ex,
+                                         BA_loc, CA_loc, CB_loc)
+        states, trans = make_nested_machine()
+        hsm = HSM(states, trans)
+        event_set = _get_events(hsm.flattened, trans)
+        assert event_set == set([A, B, C, AB_ex, AC_ex, BC_ex, AB_loc, AC_loc,
+                                 BC_loc, BA_ex, CA_ex, CB_ex, BA_loc, CA_loc,
+                                 CB_loc])
