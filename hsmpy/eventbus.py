@@ -38,24 +38,23 @@ class EventBus(object):
 
         # TODO: check for infinite dispatch loops
 
-        if not self.dispatch_in_progress:
-            # set lock for upcoming calls to 'dispatch' method
-            self.dispatch_in_progress = True
+        # add event to queue
+        self.queue += [event]
 
-            # gather all callbacks registered for initial event
+        # if dispatch is currently in progress just leave event on queue
+        # it will be served by currently running method
+        if self.dispatch_in_progress:
+            return
+
+        # lock to prevent other calls
+        self.dispatch_in_progress = True
+
+        while self.queue:
+            event = self.queue.pop()
+            # gather all callbacks registered for event
             callbacks = [cb for cb in self.listeners.get(event.__class__, [])]
+            # perform gathered calls
+            [cb(event) for cb in callbacks]
 
-            while True:  # more events might get queued up while dispatching
-                [cb(event) for cb in callbacks]  # perform gathered calls
-                if not self.queue:  # check if new events have been queued up
-                    break
-                # events were queued, gather new callbacks for queued events
-                callbacks = [cb for evt in self.queue
-                             for cb in self.listeners.get(evt.__class__, [])]
-                self.queue = []
-
-            # unlock
-            self.dispatch_in_progress = False
-
-        else:  # dispatching currently in progress, add event to queue
-            self.queue += [event]
+        # unlock
+        self.dispatch_in_progress = False

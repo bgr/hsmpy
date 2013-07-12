@@ -126,18 +126,23 @@ class Test_event_queuing(object):
         self.second_visited = 'not yet'
 
         def first(evt):
+            assert isinstance(evt, PingEvent)
             assert self.x == 1  # unchanged, sanity check
             self.x += 1
-            self.eb.dispatch(AnotherEvent('ignored'))
+            another = AnotherEvent()
+            self.eb.dispatch(another)
+            assert self.eb.queue == [another]  # event is in queue
             assert self.x == 2  # assert that 'second' hasn't been called yet
             assert self.second_visited == 'not yet'
             self.first_visited = 'yes'
             # 'second' should be invoked only after this function returns
 
         def second(evt):
+            assert isinstance(evt, AnotherEvent)  # right event is passed in
             assert self.x == 2
             assert self.first_visited == 'yes'
             assert self.second_visited == 'not yet'
+            assert self.eb.queue == []
             self.second_visited = 'yes'
             self.x += 1
 
@@ -145,7 +150,7 @@ class Test_event_queuing(object):
         self.eb.register(AnotherEvent, second)
 
     def test_dispatch(self):
-        self.eb.dispatch(PingEvent('ignored'))
+        self.eb.dispatch(PingEvent())
         assert self.x == 3
         assert self.first_visited == 'yes'
         assert self.second_visited == 'yes'
