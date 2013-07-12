@@ -6,11 +6,11 @@ from setuptools import setup, find_packages
 
 setup(
     name = "hsmpy",
-    version = "0.0.1",
+    version = "0.1.0",
     description = ("Hierarchical State Machine for Python"),
     author = "bgr",
     author_email = "bgrgyk@gmail.com",
-    url = "",
+    url = "https://github.com/bgr/hsmpy",
     packages = find_packages(),
     install_requires = [
         #"pytest >= 2.3.5",
