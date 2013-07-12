@@ -156,7 +156,8 @@ class HSM(object):
         # states tree must have single state as root
         self.states = states_map
         self.trans = transitions_map
-        self.data = object()
+        # empty object which can be used as a shared data between all states
+        self.data = type('HSM_data', (object,), {})()
         self._log = []
         self._running = False
         self.flattened = self._traverse_and_wire_up(self.states)
@@ -199,17 +200,39 @@ class HSM(object):
 
         self._validate()
 
+        self.eb = eventbus
+
         self.event_set = _get_events(self.flattened, self.trans)
-        [eventbus.register(evt, self._handle_event) for evt in self.event_set]
+        [self.eb.register(evt, self._handle_event) for evt in self.event_set]
 
         self._running = True
 
-        self._current_state = self.states.keys()[0]  # set top state as current
-        self._handle_event(Initial())  # kick-start the machine
+        self._current_state = self.states.values()[0]  # set root as current
+
+        # kick-start the machine
+        # it has to be done by dispatching unique event (to make sure this
+        # method is the only one who can dispatch it), in order to properly
+        # queue up any calls to _handle_event that might happen during the
+        # initial _handle_event call initiated by calling kick_start
+
+        class KickStart(Event):
+            pass
+
+        def kick_start(evt=None):
+            self._handle_event(Initial())
+
+        self.eb.register(KickStart, kick_start)
+        self.eb.dispatch(KickStart())
+        self.eb.unregister(KickStart, kick_start)
 
     def stop(self):
         """
             Stops responding to events (unregisters the HSM from the eventbus).
+            It doesn't exit any states, just stops responding - you should take
+            care of stopping logic using states and events before calling
+            'stop'. It is assumed that you don't want to use the instance
+            anymore after calling 'stop', so machine behaviour after stopping
+            and calling 'start' again was not tested.
         """
         if not self._running:
             return
@@ -222,13 +245,14 @@ class HSM(object):
             it if none of the states in HSM's current state set is interested
             in that event (or guards don't pass).
         """
-        exits, entries = _get_transition_sequence(self._current_state,
-                                                  event_instance,
-                                                  self.flattened, self.trans,
-                                                  self)
-        [action(event_instance, self) for action in exits + entries]
+        print 'handle event', event_instance
+        exits, entries, new_state = _get_transition_sequence(
+            self._current_state, event_instance,
+            self.flattened, self.trans, self)
 
-
+        if new_state:  # might be None if no state responds to event
+            [action(event_instance, self) for action in exits + entries]
+            self._current_state = new_state
 
     def _validate(self):
         """
@@ -257,7 +281,9 @@ class HSM(object):
 
         def chk(msg, ls):
             if ls:
-                rs(msg + '\n').format('\n'.join(ls))
+                items = ["  {0}: {1}".format(n + 1, str(el))
+                         for n, el in enumerate(ls)]
+                rs(msg + '\n' + '\n'.join(items))
 
         flat = self.flattened
         states = self.states
@@ -266,34 +292,31 @@ class HSM(object):
         if not len(states) == 1:
             rs("State tree should have exactly one top (root) state")
 
-        unreachable = _find_unreachable_states(
-            _get_state_by_name(states.keys()[0], flat), flat, trans)
-        chk("Unreachable states: {0}", unreachable)
+        unreachable = _find_unreachable_states(states.values()[0], flat, trans)
+        chk("Unreachable states", unreachable)
 
         duplicate_names = _find_duplicate_names(flat)
-        chk("Duplicate state names: {0}", duplicate_names)
+        chk("Duplicate state names", duplicate_names)
 
         duplicate_instances = _find_duplicates(flat)
-        chk("Duplicate state instances: {0}", duplicate_instances)
+        chk("Duplicate state instances", duplicate_instances)
 
         nonx_sources = _find_nonexistent_transition_sources(flat, trans)
-        chk("Keys in trans_map pointing to "
-            "nonexistent states: {0}", nonx_sources)
+        chk("Keys in trans_map pointing to nonexistent states", nonx_sources)
 
         nonx_targets = _find_nonexistent_transition_targets(flat, trans)
-        chk("Transitions with targets pointing "
-            "to nonexistent states: {0}", nonx_targets)
+        chk("Transition targets pointing to nonexistent states", nonx_targets)
 
         miss = _find_missing_initial_transitions(flat, trans)
-        chk("CompositeStates with missing initial transitions: {0}", miss)
+        chk("CompositeStates with missing initial transitions", miss)
 
         inv_init = _find_invalid_initial_transitions(flat, trans)
         chk("Invalid initial transitions (must not be loop, "
-            "local or point outside of the state): {0}", inv_init)
+            "local or point outside of the state)", inv_init)
 
         inv_local = _find_invalid_local_transitions(flat, trans)
         chk("Invalid local transitions (must be parent-child relationship, "
-            "must not be loop or initial transition): {0}", inv_local)
+            "must not be loop or initial transition)", inv_local)
 
 
 # helper functions:
@@ -408,16 +431,20 @@ def _get_transition_sequence(source_state, event_instance,
     """
         Returns transition action sequence.
 
-        Returned value is (exit_actions_list, entry_actions_list) tuple, whose
-        lists contain ordered instances of Actions to be executed to perform
-        the transition from *source_state* to some target state depending on
-        which state happens to handle the *event_instance*.
+        Returned value is 3-tuple:
+        (exit_actions_list, entry_actions_list, resulting_state), whose first
+        two elements are lists containing ordered instances of Actions to be
+        executed to perform the transition from given *source_state* to the
+        returned *resulting_state* which is the state machine will be in after
+        parforming the transition. If no state responds to given
+        *event_instance*, lists will be empty and value of *resulting_state*
+        will be None.
     """
     # state that responds to event might not be the source_state
     resp_state, transition = _get_response(source_state, event_instance,
                                            trans_dict, hsm)
     if resp_state is None:
-        return ([], [])  # nothing to exit or enter
+        return ([], [], None)  # no state responds to event
 
     target_state = _get_state_by_name(transition.target, flat_state_list)
 
@@ -446,23 +473,26 @@ def _get_transition_sequence(source_state, event_instance,
     entries = state_to_add + entries
 
     # wrap in Action objects
-    exits = [Action(action_name(st, 'exit'), st.exit) for st in exits]
-    entries = [Action(action_name(st, 'entry'), st.enter) for st in entries]
+    exit_acts = [Action(action_name(st, 'exit'), st.exit) for st in exits]
+    entry_acts = [Action(action_name(st, 'entry'), st.enter) for st in entries]
+
+
+    resulting_state = target_state
+    # if target state is composite, follow its 'initial' transition
+    # recursively and append more entry actions to entries list
+    # and also update resulting state - the final entered state
+    if isinstance(target_state, CompositeState):
+        # cannot have exits if machine is valid
+        _, more_entry_acts, resulting_state = _get_transition_sequence(
+            target_state, Initial(), flat_state_list, trans_dict, hsm)
+        entry_acts += more_entry_acts
 
     # original transition action must come before any entry action
     evt_name = event_instance.__class__.__name__
     tran_action = Action(action_name(resp_state, evt_name), transition.action)
+    entry_acts = [tran_action] + entry_acts
 
-    entries = [tran_action] + entries
-
-    # if target state is composite, follow its 'initial' transition
-    # recursively and append more entry actions to entries list
-    if isinstance(target_state, CompositeState):
-        _, more = _get_transition_sequence(target_state, Initial(),
-                                           flat_state_list, trans_dict, hsm)
-        entries += more  # cannot have exits if machine is valid
-
-    return (exits, entries)
+    return (exit_acts, entry_acts, resulting_state)
 
 
 def _get_events(flat_state_list, trans_dict):
