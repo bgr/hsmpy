@@ -1,6 +1,12 @@
 import logging
+from eventbus import Event
 
 _log = logging.getLogger(__name__)
+
+
+class Initial(Event):
+    """Used to mark initial transitions of CompositeStates"""
+    pass
 
 
 class Transition(object):
@@ -15,17 +21,16 @@ class Transition(object):
                 is fixed to None)
             action : function/callable (optional)
                 function to call when performing the transition, it must take
-                one parameter - reference to HSM instance so it can have access
-                to HSM's data
+                two parameters: event instance and reference to HSM instance
             guard : function/callable (optional)
                 function that evaluates to True/False, deciding whether to take
-                this transiton or leave it to some other; must take one
-                parameter (HSM instance)
+                this transiton or leave it to some other; must take two
+                parameters: event instance and reference to HSM instance
         """
         if action is None:
-            action = lambda hsm: None  # action does nothing by default
+            action = lambda evt, hsm: None  # action does nothing by default
         if guard is None:
-            guard = lambda hsm: True  # make guard always pass by default
+            guard = lambda evt, hsm: True  # make guard always pass by default
         self.target = target
         self.action = action
         self.guard = guard
@@ -57,10 +62,22 @@ class State(object):
         self._hsm = None  # maybe not needed
         self._parent = None
 
-    def enter(self, hsm):  # override
+    def enter(self, evt, hsm):  # override
+        """
+            Called when entering this state, triggered by some transition.
+
+            Parameters
+            ----------
+            evt : Event
+                event instance that triggered the transition
+            hsm : HSM
+                instance of HSM that this state is part of, useful for
+                accessing data shared between all states
+        """
         pass
 
-    def exit(self, hsm):  # override
+    def exit(self, evt, hsm):  # override
+        """Called when exiting this state (see 'enter')"""
         pass
 
     def __repr__(self):
@@ -78,7 +95,7 @@ class CompositeState(State):
             Parameters
             ----------
             states : dict
-                mapping of state names -> state instances, defining immediate
+                mapping of state names to state instances, defining immediate
                 children of this state
         """
         super(CompositeState, self).__init__(name)
@@ -92,7 +109,8 @@ class Action(object):
 
             Action's purpose is to adapt different functions into common
             interface required when executing transitions.
-            Action is a callable that take one parameter - HSM instance.
+            Action is a callable that take two parameters: event instance and
+            HSM instance which are relayed to wrapped function.
             Actions are used (instantiated and called) internally and are not
             relevant for end users.
 
@@ -101,13 +119,15 @@ class Action(object):
             name : str
                 descriptive name of action, useful for tests and debugging
             function : function/callable
-                function to wrap, it must take one parameter - HSM instance
+                function to wrap, it must take two parameters: event instance
+                and HSM instance
         """
         self.name = name
         self.function = function
 
-    def __call__(self, hsm):
-        return self.function(hsm)
+    def __call__(self, event, hsm):
+        """Invokes the wrapped function"""
+        return self.function(event, hsm)
 
     def __repr__(self):
         return self.name
@@ -179,12 +199,13 @@ class HSM(object):
 
         self._validate()
 
-        self.event_set = _get_events(self.trans)
+        self.event_set = _get_events(self.flattened, self.trans)
         [eventbus.register(evt, self._handle_event) for evt in self.event_set]
 
         self._running = True
 
-        self._transition(self.states.keys()[0], 'initial')
+        self._current_state = self.states.keys()[0]  # set top state as current
+        self._handle_event(Initial())  # kick-start the machine
 
     def stop(self):
         """
@@ -194,6 +215,20 @@ class HSM(object):
             return
         [self.eb.unregister(evt, self._handle_event) for evt in self.event_set]
         self._running = False
+
+    def _handle_event(self, event_instance):
+        """
+            Triggers transition (and associated actions) for event, or ignores
+            it if none of the states in HSM's current state set is interested
+            in that event (or guards don't pass).
+        """
+        exits, entries = _get_transition_sequence(self._current_state,
+                                                  event_instance,
+                                                  self.flattened, self.trans,
+                                                  self)
+        [action(event_instance, self) for action in exits + entries]
+
+
 
     def _validate(self):
         """
@@ -344,28 +379,31 @@ def _get_common_parent(state_A, state_B):
     return _get_path(state_A, state_B)[1]
 
 
-def _get_response(source_state, for_event, trans_dict, hsm):
+def _get_response(source_state, event_instance, trans_dict, hsm):
     """
         Returns state that responds to given event, and transition to follow.
 
-        When machine is in *source_state* and *for_event* happens, it might not
-        be the *source_state* that responds to that event, but some parent
-        state (or state in another orthogonal region - not yet implemented).
+        When machine is in *source_state* and *event_instance* happens, it
+        might not be the *source_state* that responds to that event, but some
+        parent state (or state in another orthogonal region - not yet
+        implemented).
 
         Return value is tuple (responding_state_instance, transition).
     """
-    tran = trans_dict.get(source_state.name, {}).get(for_event)
+    tran = trans_dict.get(source_state.name, {}).get(event_instance.__class__)
     if tran is None:  # maybe it has internal transition defined
-        tran = source_state.interests.get(for_event)
-    if tran is not None:
-        if tran.guard(hsm):  # only match if transition guard passes
-            return (source_state, tran)
-    if source_state._parent is not None:  # look up the hierarchy
-        return _get_response(source_state._parent, for_event, trans_dict, hsm)
+        tran = source_state.interests.get(event_instance.__class__)
+    # try again, and only match if transition guard passes
+    if tran is not None and tran.guard(event_instance, hsm):
+        return (source_state, tran)
+    # try looking up the hierarchy
+    if source_state._parent is not None:
+        return _get_response(source_state._parent, event_instance,
+                             trans_dict, hsm)
     return (None, None)
 
 
-def _get_transition_sequence(source_state, for_event,
+def _get_transition_sequence(source_state, event_instance,
                              flat_state_list, trans_dict, hsm):
     """
         Returns transition action sequence.
@@ -373,10 +411,10 @@ def _get_transition_sequence(source_state, for_event,
         Returned value is (exit_actions_list, entry_actions_list) tuple, whose
         lists contain ordered instances of Actions to be executed to perform
         the transition from *source_state* to some target state depending on
-        which state happens to handle the *for_event*.
+        which state happens to handle the *event_instance*.
     """
     # state that responds to event might not be the source_state
-    resp_state, transition = _get_response(source_state, for_event,
+    resp_state, transition = _get_response(source_state, event_instance,
                                            trans_dict, hsm)
     if resp_state is None:
         return ([], [])  # nothing to exit or enter
@@ -396,7 +434,7 @@ def _get_transition_sequence(source_state, for_event,
     # it also exits and reenters the parent state
     is_external_tran = (parent in [resp_state, target_state]
                         and not isinstance(transition, LocalTransition)
-                        and not for_event == 'initial')
+                        and not isinstance(event_instance, Initial))
     state_to_add = []
 
     if resp_state is target_state:
@@ -412,7 +450,7 @@ def _get_transition_sequence(source_state, for_event,
     entries = [Action(action_name(st, 'entry'), st.enter) for st in entries]
 
     # original transition action must come before any entry action
-    evt_name = 'init' if for_event == 'initial' else for_event.__name__
+    evt_name = event_instance.__class__.__name__
     tran_action = Action(action_name(resp_state, evt_name), transition.action)
 
     entries = [tran_action] + entries
@@ -420,7 +458,7 @@ def _get_transition_sequence(source_state, for_event,
     # if target state is composite, follow its 'initial' transition
     # recursively and append more entry actions to entries list
     if isinstance(target_state, CompositeState):
-        _, more = _get_transition_sequence(target_state, 'initial',
+        _, more = _get_transition_sequence(target_state, Initial(),
                                            flat_state_list, trans_dict, hsm)
         entries += more  # cannot have exits if machine is valid
 
@@ -428,9 +466,12 @@ def _get_transition_sequence(source_state, for_event,
 
 
 def _get_events(flat_state_list, trans_dict):
-    """Returns all events that machine is interested in listening to."""
+    """
+        Returns set of all event types that machine is
+        interested in listening to.
+    """
     trans = [evt for outgoing in trans_dict.values()
-             for evt in outgoing.keys() if evt != 'initial']
+             for evt in outgoing.keys() if evt != Initial]
     internal = [evt for state in flat_state_list
                 for evt in state.interests.keys()]
     return set(trans + internal)
@@ -482,7 +523,7 @@ def _find_missing_initial_transitions(flat_state_list, trans_dict):
                   if isinstance(st, CompositeState)]
     return [st for st in composites
             if (trans_dict.get(st.name) is None or
-                trans_dict.get(st.name).get('initial') is None)]
+                trans_dict.get(st.name).get(Initial) is None)]
 
 
 def _find_invalid_initial_transitions(flat_state_list, trans_dict):
@@ -500,7 +541,7 @@ def _find_invalid_initial_transitions(flat_state_list, trans_dict):
                   if isinstance(st, CompositeState) and st not in without]
 
     is_local = lambda tran: isinstance(tran, LocalTransition)
-    get_init_tran = lambda state: trans_dict[state.name]['initial']
+    get_init_tran = lambda state: trans_dict[state.name][Initial]
 
     return [st for st in composites
             if is_local(get_init_tran(st)) or

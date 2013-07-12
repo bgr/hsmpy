@@ -15,6 +15,7 @@ from hsmpy.statemachine import (_get_path,
                                 _find_unreachable_states,
                                 )
 
+from hsmpy import Initial
 from hsmpy import Transition as T
 from hsmpy import LocalTransition as Local
 from hsmpy import State, CompositeState, HSM
@@ -392,7 +393,7 @@ class Test_structural_analysis(object):
 
         self.trans = {
             'top': {
-                'initial': Local('left_B'),  # initial trans cannot be local
+                Initial: Local('left_B'),  # initial trans cannot be local
             },
             'left': {  # no initial transition
                 A: T('right'),
@@ -402,10 +403,10 @@ class Test_structural_analysis(object):
                 A: Local('left_A'),  # invalid (target not local)
                 B: Local('right'),  # invalid loop (loop cannot be local)
                 C: T('bad_target_1'),
-                'initial': T('right'),  # inital transition cannot be loop
+                Initial: T('right'),  # inital transition cannot be loop
             },
             'middle': {
-                'initial': T('top'),  # initial transition cannot go outside
+                Initial: T('top'),  # initial transition cannot go outside
                 A: T('right_A'),  # this shouldn't make right_A reachable
             },
             'bad_source_1': {
@@ -470,11 +471,11 @@ class Test_structural_analysis(object):
 
         assert f('top', False) == sorted([
             ('right_A', 'B'),
-            ('middle', 'initial')])
+            ('middle', Initial)])
 
         assert f('top', True) == sorted([
             ('right_A', 'B'),
-            ('middle', 'initial')])
+            ('middle', Initial)])
 
         assert f('left', False) == sorted([
             ('bad_source_2', 'A'),

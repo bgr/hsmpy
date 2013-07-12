@@ -1,4 +1,4 @@
-from hsmpy import Event, State, CompositeState
+from hsmpy import Event, State, CompositeState, Initial
 from hsmpy import Transition as T
 from hsmpy import InternalTransition as Internal
 from hsmpy import LocalTransition as Local
@@ -27,21 +27,21 @@ def make_miro_machine():
     """
     # transition guards
 
-    def foo_is_False(hsm):
+    def foo_is_False(evt, hsm):
         return hsm.data.foo is False
 
-    def foo_is_True(hsm):
+    def foo_is_True(evt, hsm):
         return hsm.data.foo is True
 
     # transition actions
 
-    def set_foo_False(hsm):
+    def set_foo_False(evt, hsm):
         hsm.data.foo = False
 
-    def set_foo_True(hsm):
+    def set_foo_True(evt, hsm):
         hsm.data.foo = True
 
-    def do_nothing(hsm):
+    def do_nothing(evt, hsm):
         pass
 
     # states with additional behavior
@@ -81,15 +81,15 @@ def make_miro_machine():
 
     transitions = {
         'top': {
-            'initial': T('s2', action=set_foo_False),
+            Initial: T('s2', action=set_foo_False),
         },
         's': {
-            'initial': T('s11'),
+            Initial: T('s11'),
             E: T('s11'),
             TERMINATE: T('final'),
         },
         's1': {
-            'initial': T('s11'),
+            Initial: T('s11'),
             A: T('s1'),  # loop into self
             B: Local('s11'),
             C: T('s2'),
@@ -102,12 +102,12 @@ def make_miro_machine():
             H: Local('s1'),
         },
         's2': {
-            'initial': T('s211'),
+            Initial: T('s211'),
             C: T('s1'),
             F: T('s11'),
         },
         's21': {
-            'initial': T('s211'),
+            Initial: T('s211'),
             A: T('s21'),  # loop into self
             B: Local('s211'),
             G: T('s1'),
@@ -158,10 +158,10 @@ def make_nested_machine():
 
     transitions = {
         'top': {
-            'initial': T('A'),
+            Initial: T('A'),
         },
         'A': {
-            'initial': T('B'),
+            Initial: T('B'),
             A: T('A'),
             AB_loc: Local('B'),
             AB_ex: T('B'),
@@ -169,7 +169,7 @@ def make_nested_machine():
             AC_ex: T('C'),
         },
         'B': {
-            'initial': T('C'),
+            Initial: T('C'),
             B: T('B'),
             BC_loc: Local('C'),
             BC_ex: T('C'),
