@@ -44,32 +44,14 @@ def make_miro_machine():
     def do_nothing(evt, hsm):
         pass
 
-    # states with additional behavior
-    class S(CompositeState):
-        interests = {
-            I: Internal(guard=foo_is_True, action=set_foo_False),
-        }
-
-
-    class S1(CompositeState):
-        interests = {
-            I: Internal(action=do_nothing),
-        }
-
-
-    class S2(CompositeState):
-        interests = {
-            I: Internal(guard=foo_is_False, action=set_foo_True),
-        }
-
 
     states = {
         'top': CompositeState({
-            's': S({
-                's1': S1({
+            's': CompositeState({
+                's1': CompositeState({
                     's11': State(),
                 }),
-                's2': S2({
+                's2': CompositeState({
                     's21': CompositeState({
                         's211': State()
                     })
@@ -87,6 +69,7 @@ def make_miro_machine():
             Initial: T('s11'),
             E: T('s11'),
             TERMINATE: T('final'),
+            I: Internal(guard=foo_is_True, action=set_foo_False),
         },
         's1': {
             Initial: T('s11'),
@@ -95,6 +78,7 @@ def make_miro_machine():
             C: T('s2'),
             D: Local('s', guard=foo_is_False, action=set_foo_True),
             F: T('s211'),
+            I: Internal(action=do_nothing),
         },
         's11': {
             D: Local('s1', guard=foo_is_True, action=set_foo_False),
@@ -105,6 +89,7 @@ def make_miro_machine():
             Initial: T('s211'),
             C: T('s1'),
             F: T('s11'),
+            I: Internal(guard=foo_is_False, action=set_foo_True),
         },
         's21': {
             Initial: T('s211'),

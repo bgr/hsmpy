@@ -51,8 +51,6 @@ class InternalTransition(Transition):
 
 
 class State(object):
-    interests = {}  # override
-
     def __init__(self, name='unnamed_simple_state'):
         """
             Constructor
@@ -425,9 +423,7 @@ def _get_response(source_state, event_instance, trans_dict, hsm):
         Return value is tuple (responding_state_instance, transition).
     """
     tran = trans_dict.get(source_state.name, {}).get(event_instance.__class__)
-    if tran is None:  # maybe it has internal transition defined
-        tran = source_state.interests.get(event_instance.__class__)
-    # try again, and only match if transition guard passes
+    # transition exists and its guard passes
     if tran is not None and tran.guard(event_instance, hsm):
         return (source_state, tran)
     # try looking up the hierarchy
@@ -526,8 +522,6 @@ def _get_events(flat_state_list, trans_dict):
 
     events = [evt for outgoing in trans_dict.values()
               for evt in outgoing.keys() if evt != Initial]
-    events += [evt for state in flat_state_list
-               for evt in state.interests.keys()]
     events += [sub for evt in events for sub in get_subclasses(evt)]
     return set(events)
 
@@ -566,7 +560,8 @@ def _find_nonexistent_transition_targets(flat_state_list, trans_dict):
     return [tran.target
             for dct in trans_dict.values()  # transitions dict for state
             for tran in dct.values()  # transition in state's transitions dict
-            if tran.target not in state_names]
+            if (not isinstance(tran, InternalTransition)  # don't have targets
+                and tran.target not in state_names)]  # no corresponding state
 
 
 def _find_missing_initial_transitions(flat_state_list, trans_dict):

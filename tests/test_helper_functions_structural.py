@@ -399,6 +399,7 @@ class Test_structural_analysis(object):
             'left': {  # no initial transition
                 A: T('right'),
                 B: T('left'),  # loop
+                C: Internal(),
             },
             'right': {
                 A: Local('left_A'),  # invalid (target not local)
@@ -409,6 +410,7 @@ class Test_structural_analysis(object):
             'middle': {
                 Initial: T('top'),  # initial transition cannot go outside
                 A: T('right_A'),  # this shouldn't make right_A reachable
+                B: Internal(),
             },
             'bad_source_1': {
                 A: Local('bad_target_2'),  # invalid, but omitted in check
@@ -573,16 +575,10 @@ class C22(C2): pass
 class Ignored(RootEventB): pass
 
 
-class Top(CompositeState):
-    interests = {
-        B1: Internal(),
-    }
-
-
 class Test_get_events_with_subclasses(object):
     def setup_class(self):
         self.states = {
-            'top': Top({
+            'top': CompositeState({
                 'left': State(),
                 'right': State(),
             })
@@ -591,6 +587,7 @@ class Test_get_events_with_subclasses(object):
             'top': {
                 Initial: T('left'),
                 A1: T('right'),
+                B1: Internal(),
             },
             'left': {
                 RootEventA: T('left'),  # also responds to A1 and A2
