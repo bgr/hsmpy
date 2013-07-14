@@ -385,9 +385,7 @@ class Test_loops_and_multiple_paths_machine():
 
 class SteppingState(State):
     def enter(self, evt, hsm):
-        print self.name
         if hsm.data.count < 2000:
-            print 'dispatching'
             hsm.eb.dispatch(Step())
 
 
@@ -401,7 +399,6 @@ class Test_perpetual_machine(object):
         self.eb = EventBus()
 
         def increase(evt, hsm):
-            print 'increasing'
             hsm.data.count += 1
 
         self.states = {
@@ -427,3 +424,95 @@ class Test_perpetual_machine(object):
     def test_stops_after_2000_cycles(self):
         self.hsm.start(self.eb)
         assert self.hsm.data.count == 2000
+
+
+# testing that entry and exit actions are invoked
+
+
+class Top(CompositeState):
+    def enter(self, evt, hsm):
+        hsm.data.log += ['Top.enter']
+
+    def exit(self, evt, hsm):
+        hsm.data.log += ['Top.exit']
+
+
+class Drawing(CompositeState):
+    def enter(self, evt, hsm):
+        hsm.data.log += ['Drawing.enter']
+
+    def exit(self, evt, hsm):
+        hsm.data.log += ['Drawing.exit']
+
+
+class Idle(State):
+    def enter(self, evt, hsm):
+        hsm.data.log += ['Idle.enter']
+
+    def exit(self, evt, hsm):
+        hsm.data.log += ['Idle.exit']
+
+
+class DrawingRectangle(State):
+    def enter(self, evt, hsm):
+        hsm.data.log += ['DrawingRectangle.enter']
+
+    def exit(self, evt, hsm):
+        hsm.data.log += ['DrawingRectangle.exit']
+
+
+class DrawingCircle(State):
+    def enter(self, evt, hsm):
+        hsm.data.log += ['DrawingCircle.enter']
+
+    def exit(self, evt, hsm):
+        hsm.data.log += ['DrawingCircle.exit']
+
+
+class Test_entry_exit_actions(object):
+    def setup_class(self):
+        self.states = {
+            'top': Top({
+                'idle': Idle(),
+                'drawing': Drawing({
+                    'drawing_rectangle': DrawingRectangle(),
+                    'drawing_circle': DrawingCircle(),
+                })
+            })
+        }
+
+        self.trans = {
+            'top': {
+                Initial: T('idle'),
+            },
+            'idle': {
+                Step: T('drawing_rectangle'),
+            },
+            'drawing': {
+                Initial: T('drawing_circle'),
+                Step: T('idle'),
+            },
+        }
+
+        self.eb = EventBus()
+        self.hsm = HSM(self.states, self.trans)
+        self.hsm.data.log = []
+
+    def test_in_idle_after_starting(self):
+        self.hsm.start(self.eb)
+        assert self.hsm._current_state.name == 'idle'
+
+    def test_actions_invoked_after_starting(self):
+        assert self.hsm.data.log == ['Top.enter', 'Idle.enter']
+
+    def test_actions_invoked_after_dispatching_1(self):
+        self.eb.dispatch(Step())
+        assert self.hsm.data.log == ['Top.enter', 'Idle.enter', 'Idle.exit',
+                                     'Drawing.enter', 'DrawingRectangle.enter']
+
+    def test_actions_invoked_after_dispatching_2(self):
+        self.eb.dispatch(Step())
+        assert self.hsm.data.log == ['Top.enter', 'Idle.enter', 'Idle.exit',
+                                     'Drawing.enter', 'DrawingRectangle.enter',
+                                     'DrawingRectangle.exit', 'Drawing.exit',
+                                     'Idle.enter']

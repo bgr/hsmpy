@@ -42,6 +42,10 @@ Missing HSM features
 * conditional junctions
 * history pseudostate (probably won't implement)
 
+A big warning should be put here that this implementation is totally not
+thread-safe (and won't be). That shouldn't be a problem for GUI applications
+since all widget toolkits in use are single-threaded AFAIK.
+
 
 TODOs
 -----

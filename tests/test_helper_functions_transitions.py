@@ -111,7 +111,7 @@ class Test_get_response_considering_guards(object):
             assert tran is None  # if no state responds tran must be None
         else:
             assert resp_state.name == expected_responding_state
-            assert tran.target is expected_transition_target
+            assert tran.target == expected_transition_target
             tran.action(None, mock_hsm)  # this call might change 'foo' value
                                          # event is not relevant
 
