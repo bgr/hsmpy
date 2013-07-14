@@ -16,6 +16,7 @@ from hsmpy.statemachine import (_get_path,
                                 )
 
 from hsmpy import Initial, Event
+from hsmpy import InternalTransition as Internal
 from hsmpy import Transition as T
 from hsmpy import LocalTransition as Local
 from hsmpy import State, CompositeState, HSM
@@ -567,15 +568,21 @@ class C1(RootEventC): pass
 class C2(RootEventC): pass
 class C11(C1): pass
 class C12(C1): pass
-class C21(C1): pass
-class C22(C1): pass
+class C21(C2): pass
+class C22(C2): pass
 class Ignored(RootEventB): pass
+
+
+class Top(CompositeState):
+    interests = {
+        B1: Internal(),
+    }
 
 
 class Test_get_events_with_subclasses(object):
     def setup_class(self):
         self.states = {
-            'top': CompositeState({
+            'top': Top({
                 'left': State(),
                 'right': State(),
             })
@@ -589,7 +596,6 @@ class Test_get_events_with_subclasses(object):
                 RootEventA: T('left'),  # also responds to A1 and A2
             },
             'right': {
-                B1: Local('top'),
                 RootEventC: T('right'),  # also C1, C2, C11, C12, C21, C22
             }
         }

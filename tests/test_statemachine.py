@@ -1,5 +1,7 @@
 from hsmpy import HSM, State, CompositeState, EventBus, Event, Initial
 from hsmpy import Transition as T
+from predefined_machines import make_miro_machine
+from predefined_machines import A, C, D, E, G, I
 
 
 def get_callback(key):
@@ -516,3 +518,67 @@ class Test_entry_exit_actions(object):
                                      'Drawing.enter', 'DrawingRectangle.enter',
                                      'DrawingRectangle.exit', 'Drawing.exit',
                                      'Idle.enter']
+
+
+class Test_miro_machine(object):
+    def setup_class(self):
+        self.states, self.trans = make_miro_machine()
+        self.hsm = HSM(self.states, self.trans)
+        self.eb = EventBus()
+
+    def test_step_1_in_s211_after_starting(self):
+        self.hsm.start(self.eb)
+        assert self.hsm._current_state.name == 's211'
+        assert self.hsm.data.foo is False
+
+    def test_step_2_in_s11_after_G(self):
+        self.eb.dispatch(G())
+        assert self.hsm._current_state.name == 's11'
+
+    def test_step_3_dont_change_foo_after_I(self):
+        assert self.hsm.data.foo is False
+        self.eb.dispatch(I())
+        assert self.hsm.data.foo is False
+        assert self.hsm._current_state.name == 's11'
+
+    def test_step_4_in_s11_after_A(self):
+        self.eb.dispatch(A())
+        assert self.hsm._current_state.name == 's11'
+
+    def test_step_5_in_s11_after_D(self):
+        assert self.hsm.data.foo is False
+        self.eb.dispatch(D())
+        assert self.hsm.data.foo is True
+        assert self.hsm._current_state.name == 's11'
+
+    def test_step_6_in_s11_after_D(self):
+        assert self.hsm.data.foo is True
+        self.eb.dispatch(D())
+        assert self.hsm.data.foo is False
+        assert self.hsm._current_state.name == 's11'
+
+    def test_step_7_in_s211_after_C(self):
+        self.eb.dispatch(C())
+        assert self.hsm._current_state.name == 's211'
+
+    def test_step_8_in_s11_after_E(self):
+        self.eb.dispatch(E())
+        assert self.hsm._current_state.name == 's11'
+
+    def test_step_9_in_s11_after_E(self):
+        self.eb.dispatch(E())
+        assert self.hsm._current_state.name == 's11'
+
+    def test_step_10_in_s211_after_G(self):
+        self.eb.dispatch(G())
+        assert self.hsm._current_state.name == 's211'
+
+    def test_step_11_s2_responds_to_I(self):
+        assert self.hsm.data.foo is False
+        self.eb.dispatch(I())
+        assert self.hsm.data.foo is True
+
+    def test_step_12_s_responds_to_I(self):
+        assert self.hsm.data.foo is True
+        self.eb.dispatch(I())
+        assert self.hsm.data.foo is False

@@ -253,14 +253,17 @@ class HSM(object):
             self._current_state, event_instance,
             self.flattened, self.trans, self)
 
-        if new_state:  # might be None if no state responds to event
-            actions = exits + entries
-            _log.debug("Performing actions: {0}".format(', '.join(
-                ["'{0}'".format(action.name) for action in actions]
-            )))
-            [action(event_instance, self) for action in actions]
-            _log.debug("HSM is now in '{0}' state".format(new_state.name))
+        actions = exits + entries
+        _log.debug("Performing actions: {0}".format(', '.join(
+            ["'{0}'".format(action.name) for action in actions]
+        )))
+        [action(event_instance, self) for action in actions]
+
+        # new_state might be None if it was an internal transition
+        # or no state responds to event
+        if new_state:
             self._current_state = new_state
+            _log.debug("HSM is now in '{0}' state".format(new_state.name))
 
     def _validate(self):
         """
@@ -446,7 +449,10 @@ def _get_transition_sequence(source_state, event_instance,
         returned *resulting_state* which is the state machine will be in after
         parforming the transition. If no state responds to given
         *event_instance*, lists will be empty and value of *resulting_state*
-        will be None.
+        will be None. If state responds via internal transition
+        *exit_actions_list* will be empty, *entry_actions_list* will contain
+        single transition action and *resulting_state* will be None since no
+        change of state is required.
     """
     # state that responds to event might not be the source_state
     resp_state, transition = _get_response(source_state, event_instance,
@@ -454,9 +460,17 @@ def _get_transition_sequence(source_state, event_instance,
     if resp_state is None:
         return ([], [], None)  # no state responds to event
 
-    target_state = _get_state_by_name(transition.target, flat_state_list)
-
     action_name = lambda st, descr: '{0}-{1}'.format(st.name, descr)
+
+    evt_name = event_instance.__class__.__name__
+    tran_action = Action(action_name(resp_state, evt_name), transition.action)
+
+    # in case of internal transition just perform the transition action
+    # do not change the state
+    if isinstance(transition, InternalTransition):
+        return ([], [tran_action], None)
+
+    target_state = _get_state_by_name(transition.target, flat_state_list)
 
     exits_till_resp, _, _ = _get_path(source_state, resp_state)
     exits_from_resp, parent, entries = _get_path(resp_state, target_state)
@@ -484,7 +498,6 @@ def _get_transition_sequence(source_state, event_instance,
     exit_acts = [Action(action_name(st, 'exit'), st.exit) for st in exits]
     entry_acts = [Action(action_name(st, 'entry'), st.enter) for st in entries]
 
-
     resulting_state = target_state
     # if target state is composite, follow its 'initial' transition
     # recursively and append more entry actions to entries list
@@ -496,8 +509,6 @@ def _get_transition_sequence(source_state, event_instance,
         entry_acts += more_entry_acts
 
     # original transition action must come before any entry action
-    evt_name = event_instance.__class__.__name__
-    tran_action = Action(action_name(resp_state, evt_name), transition.action)
     entry_acts = [tran_action] + entry_acts
 
     return (exit_acts, entry_acts, resulting_state)
