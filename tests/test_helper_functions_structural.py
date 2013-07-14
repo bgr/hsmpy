@@ -15,7 +15,7 @@ from hsmpy.statemachine import (_get_path,
                                 _find_unreachable_states,
                                 )
 
-from hsmpy import Initial
+from hsmpy import Initial, Event
 from hsmpy import Transition as T
 from hsmpy import LocalTransition as Local
 from hsmpy import State, CompositeState, HSM
@@ -555,3 +555,49 @@ class Test_get_events(object):
         assert event_set == set([A, B, C, AB_ex, AC_ex, BC_ex, AB_loc, AC_loc,
                                  BC_loc, BA_ex, CA_ex, CB_ex, BA_loc, CA_loc,
                                  CB_loc])
+
+
+class RootEventA(Event): pass
+class RootEventB(Event): pass
+class RootEventC(Event): pass
+class A1(RootEventA): pass
+class A2(RootEventA): pass
+class B1(RootEventB): pass
+class C1(RootEventC): pass
+class C2(RootEventC): pass
+class C11(C1): pass
+class C12(C1): pass
+class C21(C1): pass
+class C22(C1): pass
+class Ignored(RootEventB): pass
+
+
+class Test_get_events_with_subclasses(object):
+    def setup_class(self):
+        self.states = {
+            'top': CompositeState({
+                'left': State(),
+                'right': State(),
+            })
+        }
+        self.trans = {
+            'top': {
+                Initial: T('left'),
+                A1: T('right'),
+            },
+            'left': {
+                RootEventA: T('left'),  # also responds to A1 and A2
+            },
+            'right': {
+                B1: Local('top'),
+                RootEventC: T('right'),  # also C1, C2, C11, C12, C21, C22
+            }
+        }
+        self.hsm = HSM(self.states, self.trans)
+
+    def test_get_events(self):
+        event_set = _get_events(self.hsm.flattened, self.trans)
+        # RootEventB shouldn't appear in event_set since nobody explicitly
+        # listens to it, only its subclasses
+        assert event_set == set([RootEventA, RootEventC, A1, A2, B1, C1, C2,
+                                 C11, C12, C21, C22])

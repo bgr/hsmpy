@@ -508,11 +508,17 @@ def _get_events(flat_state_list, trans_dict):
         Returns set of all event types that machine is
         interested in listening to.
     """
-    trans = [evt for outgoing in trans_dict.values()
-             for evt in outgoing.keys() if evt != Initial]
-    internal = [evt for state in flat_state_list
-                for evt in state.interests.keys()]
-    return set(trans + internal)
+    def get_subclasses(cls):
+        """Returns all subclasses of class (not only direct ones)"""
+        ls = cls.__subclasses__()
+        return ls + [subsub for sub in ls for subsub in get_subclasses(sub)]
+
+    events = [evt for outgoing in trans_dict.values()
+              for evt in outgoing.keys() if evt != Initial]
+    events += [evt for state in flat_state_list
+               for evt in state.interests.keys()]
+    events += [sub for evt in events for sub in get_subclasses(evt)]
+    return set(events)
 
 
 # validation methods:
