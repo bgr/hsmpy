@@ -51,11 +51,10 @@ class InternalTransition(Transition):
 
 
 class State(object):
-    def __init__(self, name='unnamed_simple_state'):
+    def __init__(self):
         """
             Constructor
         """
-        self.name = name
         self.states = {}  # for cleaner code, only CompositeState has substates
         self._hsm = None  # maybe not needed
         self._parent = None
@@ -86,9 +85,11 @@ class State(object):
 
 
 class CompositeState(State):
-    def __init__(self, states, name='unnamed_composite_state'):
+    def __init__(self, states):
         """
             Constructor
+
+            State with ability to contain nested sub-states
 
             Parameters
             ----------
@@ -96,8 +97,27 @@ class CompositeState(State):
                 mapping of state names to state instances, defining immediate
                 children of this state
         """
-        super(CompositeState, self).__init__(name)
+        super(CompositeState, self).__init__()
         self.states = states
+
+
+class SubmachinesState(State):
+    def __init__(self, machines):
+        """
+            Constructor
+
+            State with ability to contain multiple sub-machines that are all
+            running at the same time when this state is active.
+            Acts as a under-featured substitute for orthogonal regions.
+
+            Parameters
+            ----------
+            machines : list
+                list of tuples (states, transitions), where each tuple defines
+                one submachine
+        """
+        super(SubmachinesState, self).__init__()
+        self.machines = machines
 
 
 class Action(object):

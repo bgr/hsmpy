@@ -1,7 +1,59 @@
-from hsmpy import Event, State, CompositeState, Initial
+from hsmpy import Event, State, CompositeState, SubmachinesState, Initial
 from hsmpy import Transition as T
 from hsmpy import InternalTransition as Internal
 from hsmpy import LocalTransition as Local
+
+
+
+# utility states that log entries and exits into their hsm.data._log dict
+
+
+def hsmlog(instance, hsm, action):
+    if not hasattr(hsm.data, '_log'):
+        hsm.data._log = {}
+    log = hsm.data._log
+    log_id = '{0}_{1}'.format((instance._log_id or instance.name), action)
+    if log_id in log:
+        log[log_id] += 1
+    else:
+        log[log_id] = 1
+
+
+class LoggingState(State):
+    def __init__(self, log_id=None):
+        super(LoggingState, self).__init__()
+        self._log_id = log_id
+
+    def enter(self, evt, hsm):
+        hsmlog(self, hsm, 'enter')
+
+    def exit(self, evt, hsm):
+        hsmlog(self, hsm, 'exit')
+
+
+class LoggingCompositeState(CompositeState):
+    def __init__(self, states, log_id=None):
+        super(LoggingCompositeState, self).__init__(states)
+        self._log_id = log_id
+
+    def enter(self, evt, hsm):
+        hsmlog(self, hsm, 'enter')
+
+    def exit(self, evt, hsm):
+        hsmlog(self, hsm, 'exit')
+
+
+class LoggingSubmachinesState(SubmachinesState):
+    def __init__(self, machines, log_id=None):
+        super(LoggingSubmachinesState, self).__init__(machines)
+        self._log_id = log_id
+
+    def enter(self, evt, hsm):
+        hsmlog(self, hsm, 'enter')
+
+    def exit(self, evt, hsm):
+        hsmlog(self, hsm, 'exit')
+
 
 # events
 class A(Event): pass
@@ -46,18 +98,18 @@ def make_miro_machine():
 
 
     states = {
-        'top': CompositeState({
-            's': CompositeState({
-                's1': CompositeState({
-                    's11': State(),
+        'top': LoggingCompositeState({
+            's': LoggingCompositeState({
+                's1': LoggingCompositeState({
+                    's11': LoggingState(),
                 }),
-                's2': CompositeState({
-                    's21': CompositeState({
-                        's211': State()
+                's2': LoggingCompositeState({
+                    's21': LoggingCompositeState({
+                        's211': LoggingState()
                     })
                 })
             }),
-            'final': State()
+            'final': LoggingState()
         })
     }
 
@@ -120,6 +172,7 @@ class BA_loc(Event): pass
 class CA_loc(Event): pass
 class CB_loc(Event): pass
 
+
 def make_nested_machine():
     """
         Returns (states, transitions) tuple describing the machine layout with
@@ -132,10 +185,10 @@ def make_nested_machine():
     """
 
     states = {
-        'top': CompositeState({
-            'A': CompositeState({
-                'B': CompositeState({
-                    'C': State(),
+        'top': LoggingCompositeState({
+            'A': LoggingCompositeState({
+                'B': LoggingCompositeState({
+                    'C': LoggingState(),
                 })
             })
         })

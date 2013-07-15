@@ -53,8 +53,6 @@ TODOs
 * documentation and examples
 * validation check that initial condition doesn't have a guard
 * maybe change initial transition to be LocalTransition
-* what happens when same state has both internal and outgoing transition for
-  same event? maybe internal transitions should be defined in trans dict too
 * State and Transition are inconsistent, one defines actions as methods, other
   takes them as arguments; maybe switch to namedtuples if it proves to be
   reasonable

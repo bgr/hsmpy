@@ -2,6 +2,8 @@ from hsmpy import HSM, State, CompositeState, EventBus, Event, Initial
 from hsmpy import Transition as T
 from predefined_machines import make_miro_machine
 from predefined_machines import A, C, D, E, G, I
+from predefined_machines import (LoggingCompositeState, LoggingState,
+                                 LoggingSubmachinesState)
 
 
 def get_callback(key):
@@ -188,11 +190,11 @@ class Goal(State):
         hsm.data['goal_exit'] += 1
 
 
-class Left(Event):
+class MoveLeft(Event):
     pass
 
 
-class Right(Event):
+class MoveRight(Event):
     pass
 
 
@@ -234,8 +236,8 @@ class Test_loops_and_multiple_paths_machine():
                 Initial: T('start', action=get_callback('initial')),
             },
             'start': {
-                Left: T('goal', action=get_callback('trans_left')),
-                Right: T('goal', action=get_callback('trans_right')),
+                MoveLeft: T('goal', action=get_callback('trans_left')),
+                MoveRight: T('goal', action=get_callback('trans_right')),
             },
             'goal': {
                 Loop: T('goal', action=get_callback('trans_loop')),
@@ -247,8 +249,8 @@ class Test_loops_and_multiple_paths_machine():
 
     def test_doesnt_respond_to_events_before_starting(self):
         assert all([v == 0 for v in self.hsm.data.values()])
-        self.eb.dispatch(Left())
-        self.eb.dispatch(Right())
+        self.eb.dispatch(MoveLeft())
+        self.eb.dispatch(MoveRight())
         self.eb.dispatch(Loop())
         self.eb.dispatch(Restart())
         assert all([v == 0 for v in self.hsm.data.values()])
@@ -269,7 +271,7 @@ class Test_loops_and_multiple_paths_machine():
         assert self.hsm.data.values().count(0) == 7
 
     def test_transition_to_goal_via_right(self):
-        self.eb.dispatch(Right())
+        self.eb.dispatch(MoveRight())
         assert self.hsm._current_state == self.goal
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1  # changed
@@ -281,8 +283,8 @@ class Test_loops_and_multiple_paths_machine():
         assert self.hsm.data['trans_restart'] == 0
 
     def test_ignore_left_and_right_events_while_in_goal(self):
-        self.eb.dispatch(Left())
-        self.eb.dispatch(Right())
+        self.eb.dispatch(MoveLeft())
+        self.eb.dispatch(MoveRight())
         assert self.hsm._current_state == self.goal
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1
@@ -353,7 +355,7 @@ class Test_loops_and_multiple_paths_machine():
         assert self.hsm.data['trans_restart'] == 1
 
     def test_transition_to_goal_via_left(self):
-        self.eb.dispatch(Left())
+        self.eb.dispatch(MoveLeft())
         assert self.hsm._current_state == self.goal
         assert self.hsm.data['start_enter'] == 2
         assert self.hsm.data['start_exit'] == 2  # changed
@@ -366,8 +368,8 @@ class Test_loops_and_multiple_paths_machine():
 
     def test_doesnt_respond_to_events_after_stopping(self):
         self.hsm.stop()
-        self.eb.dispatch(Left())
-        self.eb.dispatch(Right())
+        self.eb.dispatch(MoveLeft())
+        self.eb.dispatch(MoveRight())
         self.eb.dispatch(Loop())
         self.eb.dispatch(Restart())
         assert self.hsm.data['initial'] == 2
@@ -431,54 +433,16 @@ class Test_perpetual_machine(object):
 # testing that entry and exit actions are invoked
 
 
-class Top(CompositeState):
-    def enter(self, evt, hsm):
-        hsm.data.log += ['Top.enter']
-
-    def exit(self, evt, hsm):
-        hsm.data.log += ['Top.exit']
-
-
-class Drawing(CompositeState):
-    def enter(self, evt, hsm):
-        hsm.data.log += ['Drawing.enter']
-
-    def exit(self, evt, hsm):
-        hsm.data.log += ['Drawing.exit']
-
-
-class Idle(State):
-    def enter(self, evt, hsm):
-        hsm.data.log += ['Idle.enter']
-
-    def exit(self, evt, hsm):
-        hsm.data.log += ['Idle.exit']
-
-
-class DrawingRectangle(State):
-    def enter(self, evt, hsm):
-        hsm.data.log += ['DrawingRectangle.enter']
-
-    def exit(self, evt, hsm):
-        hsm.data.log += ['DrawingRectangle.exit']
-
-
-class DrawingCircle(State):
-    def enter(self, evt, hsm):
-        hsm.data.log += ['DrawingCircle.enter']
-
-    def exit(self, evt, hsm):
-        hsm.data.log += ['DrawingCircle.exit']
 
 
 class Test_entry_exit_actions(object):
     def setup_class(self):
         self.states = {
-            'top': Top({
-                'idle': Idle(),
-                'drawing': Drawing({
-                    'drawing_rectangle': DrawingRectangle(),
-                    'drawing_circle': DrawingCircle(),
+            'top': LoggingCompositeState({
+                'idle': LoggingState(),
+                'drawing': LoggingCompositeState({
+                    'drawing_rectangle': LoggingState(),
+                    'drawing_circle': LoggingState(),
                 })
             })
         }
@@ -498,26 +462,41 @@ class Test_entry_exit_actions(object):
 
         self.eb = EventBus()
         self.hsm = HSM(self.states, self.trans)
-        self.hsm.data.log = []
 
     def test_in_idle_after_starting(self):
         self.hsm.start(self.eb)
         assert self.hsm._current_state.name == 'idle'
 
     def test_actions_invoked_after_starting(self):
-        assert self.hsm.data.log == ['Top.enter', 'Idle.enter']
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'idle_enter': 1,
+        }
 
     def test_actions_invoked_after_dispatching_1(self):
         self.eb.dispatch(Step())
-        assert self.hsm.data.log == ['Top.enter', 'Idle.enter', 'Idle.exit',
-                                     'Drawing.enter', 'DrawingRectangle.enter']
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'idle_enter': 1,
+            'idle_exit': 1,
+            'drawing_enter': 1,
+            'drawing_rectangle_enter': 1,
+        }
 
     def test_actions_invoked_after_dispatching_2(self):
         self.eb.dispatch(Step())
-        assert self.hsm.data.log == ['Top.enter', 'Idle.enter', 'Idle.exit',
-                                     'Drawing.enter', 'DrawingRectangle.enter',
-                                     'DrawingRectangle.exit', 'Drawing.exit',
-                                     'Idle.enter']
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'idle_enter': 2,
+            'idle_exit': 1,
+            'drawing_enter': 1,
+            'drawing_rectangle_enter': 1,
+            'drawing_rectangle_exit': 1,
+            'drawing_exit': 1,
+        }
+
+
+# cycle Miro test machine with event sequence featured in the pdf example
 
 
 class Test_miro_machine(object):
