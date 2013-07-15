@@ -1,4 +1,5 @@
 import logging
+from collections import namedtuple
 from eventbus import Event
 
 _log = logging.getLogger(__name__)
@@ -9,45 +10,58 @@ class Initial(Event):
     pass
 
 
-class Transition(object):
-    def __init__(self, target, action=None, guard=None):
-        """
-            Constructor
+# transitions
 
-            Parameters
-            ----------
-            target : str
-                name of the target state (in case of InternalTransition target
-                is fixed to None)
-            action : function/callable (optional)
-                function to call when performing the transition, it must take
-                two parameters: event instance and reference to HSM instance
-            guard : function/callable (optional)
-                function that evaluates to True/False, deciding whether to take
-                this transiton or leave it to some other; must take two
-                parameters: event instance and reference to HSM instance
-        """
-        if action is None:
-            action = lambda evt, hsm: None  # action does nothing by default
-        if guard is None:
-            guard = lambda evt, hsm: True  # make guard always pass by default
-        self.target = target
-        self.action = action
-        self.guard = guard
-
-    def __repr__(self):
-        return "{0} to '{1}'".format(self.__class__.__name__, self.target)
+no_action = lambda evt, hsm: None  # action does nothing by default
+passing_guard = lambda evt, hsm: True  # make guard always pass by default
 
 
-class LocalTransition(Transition):
-    pass
+def _make_tran(which, target, action=None, guard=None):
+    if action is None:
+        action = no_action
+    if guard is None:
+        guard = passing_guard
+    return which(target, action, guard)
 
 
-class InternalTransition(Transition):
-    def __init__(self, action=None, guard=None):
-        super(InternalTransition, self).__init__(None, action, guard)
+_Transition = namedtuple('Transition', 'target, action, guard')
+_Local = namedtuple('LocalTransition', 'target, action, guard')
+_Internal = namedtuple('InternalTransition', 'target, action, guard')
 
-# TODO: maybe reintroduce LoopTransition
+
+def Transition(target, action=None, guard=None):
+    """
+        Regular transition.
+
+        Parameters
+        ----------
+        target : str
+            name of the target state (in case of InternalTransition target
+            is fixed to None)
+        action : function/callable (optional)
+            function to call when performing the transition, it must take
+            two parameters: event instance and reference to HSM instance
+        guard : function/callable (optional)
+            function that evaluates to True/False, deciding whether to take
+            this transiton or leave it to some other; must take two
+            parameters: event instance and reference to HSM instance
+    """
+    return _make_tran(_Transition, target, action, guard)
+
+
+def LocalTransition(target, action=None, guard=None):
+    """Local transition"""
+    return _make_tran(_Local, target, action, guard)
+
+
+def InternalTransition(action=None, guard=None):
+    """
+        Internal transition.
+
+        Doesn't have a target state, doesn't cause state change.
+    """
+    return _make_tran(_Internal, None, action, guard)
+
 
 
 class State(object):
@@ -544,6 +558,54 @@ def _get_events(flat_state_list, trans_dict):
               for evt in outgoing.keys() if evt != Initial]
     events += [sub for evt in events for sub in get_subclasses(evt)]
     return set(events)
+
+
+def _add_prefix(name, prefix):
+    """Adds prefix to name"""
+    prefix = prefix or ()
+    if isinstance(name, str):
+        return prefix + (name,)
+    elif isinstance(name, tuple):
+        return prefix + name
+    raise ValueError("Invalid state name '{0}'".format(name))
+
+
+def _rename_transitions(trans_dict, prefix):
+    """Renames source state names and outgoing transition targets"""
+    def rename_tran_target(tran):
+        """Returns new transition with prefix prepended to target state name"""
+        if tran.target is None:
+            return tran
+        new_name = _add_prefix(tran.target, prefix)
+        return tran._make((new_name, tran.action, tran.guard))
+
+    def rename_event_trans_map(trans_map):
+        """Renames transition targets in evt -> tran sub-dictionary"""
+        return dict([(evt, rename_tran_target(tran))
+                     for evt, tran in trans_map.items()])
+
+    return dict([(_add_prefix(src_name, prefix), rename_event_trans_map(outg))
+                 for src_name, outg in trans_dict.items()])
+
+
+def _rename(states_dict, trans_dict, prefix=None):
+    def cond_rename(state_name, val):
+        """Renames states and submachines accordingly"""
+        if isinstance(val, list):  # go into submachines and add prefixes
+            new_prefix = lambda i: _add_prefix(state_name, prefix) + (i,)
+            new_val = [_rename(sdict, tdict, new_prefix(i))
+                       for i, (sdict, tdict) in enumerate(val)]
+        elif isinstance(val, dict):
+            new_val, _ = _rename(val, {}, prefix)
+        else:
+            raise ValueError("Invalid element")  # TODO: move to validation
+        return (_add_prefix(state_name, prefix), new_val)
+
+    new_states = dict([cond_rename(state_name, list_or_dict)
+                       for state_name, list_or_dict in states_dict.items()])
+
+    new_trans = _rename_transitions(trans_dict, prefix)
+    return (new_states, new_trans)
 
 
 # validation methods:

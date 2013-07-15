@@ -224,3 +224,72 @@ def make_nested_machine():
     }
 
     return (states, transitions)
+
+
+def make_submachines_machine(self):
+    """
+        Machine testing "orthogonal" regions functionality aka
+        SubmachinesState. It has two children states: *left* and *right*:
+        *left* is a SubmachinesState with one submachine, *right* is a
+        CompositeState with one simple State and one SubmachinesState with two
+        submachines. All three submachines are identical and respond only to A
+        and TERMINATE events. Toplevel machine responds to A, B and TERMINATE.
+    """
+    submachines = []
+    for i in range(3):  # make a couple of identical machines
+        sub_states = {
+            'top': LoggingCompositeState({
+                'left': LoggingState(),
+                'right': LoggingState(),
+                'final': LoggingState(),
+            })
+        }
+        sub_trans = {
+            'top': {
+                Initial: T('left'),
+                TERMINATE: Local('final'),
+            },
+            'left': {
+                A: T('right'),
+            },
+            'right': {
+                A: Local('left'),  # should fail validation
+            }
+        }
+        submachines += [(sub_states, sub_trans)]
+
+    # TODO: make HSM non-destructive to prevent duplication like this
+
+    states = {
+        'top': LoggingCompositeState({
+            'left': LoggingSubmachinesState([
+                submachines[0],
+            ]),
+            'right': LoggingCompositeState({
+                'dumb': LoggingState(),
+                'subs': LoggingSubmachinesState([
+                    submachines[1],
+                    submachines[2],
+                ]),
+            }),
+        })
+    }
+
+    trans = {
+        'top': {
+            Initial: T('left'),
+        },
+        'left': {
+            A: T('right'),
+            B: T('right'),
+        },
+        'right': {
+            Initial: T('subs'),
+            A: T('left'),  # dumb will ignore A thus transitioning to left
+        },
+        'subs': {
+            A: T('dumb'),  # shouldn't fire if submachine responds
+        }
+    }
+
+    return (states, trans)

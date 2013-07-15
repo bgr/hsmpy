@@ -2,8 +2,7 @@ from hsmpy import HSM, State, CompositeState, EventBus, Event, Initial
 from hsmpy import Transition as T
 from predefined_machines import make_miro_machine
 from predefined_machines import A, C, D, E, G, I
-from predefined_machines import (LoggingCompositeState, LoggingState,
-                                 LoggingSubmachinesState)
+from predefined_machines import LoggingCompositeState, LoggingState
 
 
 def get_callback(key):
