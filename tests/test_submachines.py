@@ -1,5 +1,7 @@
-from hsmpy import HSM, EventBus
-from hsmpy.statemachine import _rename, _rename_transitions
+import pytest
+from hsmpy import HSM  # , EventBus
+from hsmpy.statemachine import (_rename, _rename_transitions, _get_response,
+                                _get_state_by_name)
 from hsmpy import Initial
 from hsmpy import Transition as T
 from hsmpy import LocalTransition as Local
@@ -217,84 +219,95 @@ class Test_renaming(object):
 # state_addr = state_name:str | submachine_addr:tuple
 # submachine_addr = (state_name, index, addr)
 
-responding = [
-    # left's submachine in left state - responds to A and TERMINATE
-    (('left', ['left']), TERMINATE,
+responding_submachines = [
+    # element format:
+    # ( [list, of, states], EVENT,
+    #   [list, of, responding, states],
+    #   [list, of, transition, targets] )
+
+    # 'left's submachine is in 'start' state - responds to A and TERMINATE
+    ([('left', 0, 'start')], TERMINATE,
      [('left', 0, 'top')],
      [('left', 0, 'final')]),
 
-    (('left', ['left']), A, 'left',
-     [('left', 0, 'left')],
+    ([('left', 0, 'start')], A,
+     [('left', 0, 'start')],
      [('left', 0, 'right')]),
 
-    # left's submachine in right state - ditto
-    (('left', ['right']), TERMINATE,
+    # 'left's submachine is in 'right' state - ditto
+    ([('left', 0, 'right')], TERMINATE,
      [('left', 0, 'right')],
      [('left', 0, 'final')]),
 
-    (('left', ['right']), A,
+    ([('left', 0, 'right')], A,
      [('left', 0, 'right')],
-     [('left', 0, 'left')]),
+     [('left', 0, 'start')]),
 
-    # left's submachine is in final state - doesn't respond to A
-    (('left', ['final']), A,
-     ['left'],
-     ['right']),  # toplevel left responds, transitions to right
+    # 'left's submachine is in 'final' state - doesn't respond to A
+    ([('left', 0, 'final')], A,
+     [('left',)],  # toplevel 'left' responds, transitions to 'right'
+     [('right',)]),
 
-    (('left', ['left']), B,  # only toplevel left responds to B
-     ['left'],
-     ['right']),
+    ([('left', 0, 'start')], B,  # only toplevel 'left' responds to B
+     [('left',)],
+     [('right',)]),
 
-    (('left', ['left']), F,  # nobody responds to F
+    ([('left', 0, 'start')], F,  # nobody responds to F
      [],
      []),
 
-    (('subs', ['left', 'left']), A,  # both submachines are in 'left' state
-     [('subs', 0, 'left'), ('subs', 1, 'left')],  # states that responded
+    # 'subs' has two submachines
+    ([('subs', 0, 'start'), ('subs', 1, 'start')], A,
+     [('subs', 0, 'start'), ('subs', 1, 'start')],  # states that responded
      [('subs', 0, 'right'), ('subs', 1, 'right')]),  # states to transition to
 
-    (('subs', ['left', 'right']), A,
-     [('subs', 0, 'left'), ('subs', 1, 'right')],
-     [('subs', 0, 'right'), ('subs', 1, 'left')]),
+    ([('subs', 0, 'start'), ('subs', 1, 'right')], A,
+     [('subs', 0, 'start'), ('subs', 1, 'right')],
+     [('subs', 0, 'right'), ('subs', 1, 'start')]),
 
-    (('subs', ['left', 'final']), A,
-     [('subs', 0, 'left')],  # only first responds
+    ([('subs', 0, 'start'), ('subs', 1, 'final')], A,
+     [('subs', 0, 'start')],  # only first responds
      [('subs', 0, 'right')]),
 
-    (('subs', ['final', 'right']), A,
+    ([('subs', 0, 'final'), ('subs', 1, 'right')], A,
      [('subs', 1, 'right')],  # only second responds
-     [('subs', 1, 'left')]),
+     [('subs', 1, 'start')]),
 
-    (('subs', ['final', 'final']), A,
-     ['subs'],  # submachines don't respond, 'subs' transitions to 'dumb'
-     ['dumb']),
+    ([('subs', 0, 'final'), ('subs', 1, 'final')], A,
+     [('subs',)],  # submachines don't respond, 'subs' transitions to 'dumb'
+     [('dumb',)]),
 
-    ('dumb', A,
-     ['right'],
-     ['left']),
+    ([('dumb',)], A,
+     [('right',)],
+     [('left',)]),
 ]
 
 
-#class Test_get_response_submachines(object):
+class Test_get_response_submachines(object):
 
-    #def setup_class(self):
-        #self.states, self.trans = make_miro_machine()
-        #self.hsm = HSM(self.states, self.trans)
+    def setup_class(self):
+        states, trans = make_submachines_machine()
+        self.hsm = HSM(states, trans)
 
-    #@pytest.mark.parametrize(('from_state', 'on_event',
-                              #'expected_responding_state',
-                              #'expected_transition_target'),
-                             #responding_reguardless)
-    #def test_run(self, from_state, on_event, expected_responding_state,
-                 #expected_transition_target):
-        #mock_hsm = MockHSM()
-        #from_state = _get_state_by_name(from_state, self.hsm.flattened)
+    @pytest.mark.parametrize(('from_states', 'EventType',
+                              'expected_responding_states',
+                              'expected_transition_targets'),
+                             responding_submachines)
+    def test_run(self, from_states, EventType, expected_responding_states,
+                 expected_transition_targets):
+        starting_states = [_get_state_by_name(state_id, self.hsm.flattened)
+                           for state_id in from_states]
 
-        #resp_state, tran = _get_response(from_state, on_event(),
-                                         #self.trans, mock_hsm)
+        resp_states, trans = _get_response(starting_states, EventType(),
+                                           self.hsm.trans, None)
 
-        #assert resp_state.name == expected_responding_state
-        #assert tran.target == expected_transition_target
+        assert len(resp_states) == len(expected_responding_states)
+        resp_ids = set([st.id for st in resp_states])
+        assert resp_ids == set(expected_responding_states)
+
+        assert len(trans) == len(expected_transition_targets)
+        target_ids = set([tr.target for tr in trans])
+        assert target_ids == set(expected_transition_targets)
 
 #class Test_submachines_transition_sequence(object):
     #def setup_class(self):

@@ -226,7 +226,7 @@ def make_nested_machine():
     return (states, transitions)
 
 
-def make_submachines_machine(self):
+def make_submachines_machine():
     """
         Machine testing "orthogonal" regions functionality aka
         SubmachinesState. It has two children states: *left* and *right*:
@@ -239,26 +239,24 @@ def make_submachines_machine(self):
     for i in range(3):  # make a couple of identical machines
         sub_states = {
             'top': LoggingCompositeState({
-                'left': LoggingState(),
+                'start': LoggingState(),
                 'right': LoggingState(),
                 'final': LoggingState(),
             })
         }
         sub_trans = {
             'top': {
-                Initial: T('left'),
+                Initial: T('start'),
                 TERMINATE: Local('final'),
             },
             'left': {
                 A: T('right'),
             },
             'right': {
-                A: Local('left'),  # should fail validation
+                A: Local('start'),  # should fail validation
             }
         }
         submachines += [(sub_states, sub_trans)]
-
-    # TODO: make HSM non-destructive to prevent duplication like this
 
     states = {
         'top': LoggingCompositeState({

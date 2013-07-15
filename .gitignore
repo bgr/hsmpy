@@ -8,3 +8,4 @@ eggs/
 *$py.class
 *.pyc
 *.swp
+*.swo
