@@ -124,46 +124,12 @@ class Test_renaming(object):
                 ('nested', 1, 'nested_mid', 1, 'nested_deep_2'): {},
             }
         }
-        expected_mid_0_deep_0_trans = {
-            ('nested', 0, 'nested_mid', 0, 'top'): {
-                Initial: T(('nested', 0, 'nested_mid', 0, 'nested_deep_2')),
-            },
-            ('nested', 0, 'nested_mid', 0, 'nested_deep_1'): {
-                A: T(('nested', 0, 'nested_mid', 0, 'renaming is dumb')),
-            }
-        }
-        expected_mid_0_deep_1_trans = {
-            ('nested', 0, 'nested_mid', 1, 'top'): {
-                Initial: T(('nested', 0, 'nested_mid', 1, 'nested_deep_2')),
-            },
-            ('nested', 0, 'nested_mid', 1, 'nested_deep_1'): {
-                A: T(('nested', 0, 'nested_mid', 1, 'renaming is dumb')),
-            }
-        }
-        expected_mid_1_deep_0_trans = {
-            ('nested', 1, 'nested_mid', 0, 'top'): {
-                Initial: T(('nested', 1, 'nested_mid', 0, 'nested_deep_2')),
-            },
-            ('nested', 1, 'nested_mid', 0, 'nested_deep_1'): {
-                A: T(('nested', 1, 'nested_mid', 0, 'renaming is dumb')),
-            }
-        }
-        expected_mid_1_deep_1_trans = {
-            ('nested', 1, 'nested_mid', 1, 'top'): {
-                Initial: T(('nested', 1, 'nested_mid', 1, 'nested_deep_2')),
-            },
-            ('nested', 1, 'nested_mid', 1, 'nested_deep_1'): {
-                A: T(('nested', 1, 'nested_mid', 1, 'renaming is dumb')),
-            }
-        }
-
 
         expected_mid_0 = {
             ('nested', 0, 'top'): {
                 ('nested', 0, 'nested_mid'):
                 [
-                    (expected_mid_0_deep_0, expected_mid_0_deep_0_trans),
-                    (expected_mid_0_deep_1, expected_mid_0_deep_1_trans)
+                    expected_mid_0_deep_0, expected_mid_0_deep_1
                 ]
             }
         }
@@ -172,44 +138,63 @@ class Test_renaming(object):
             ('nested', 1, 'top'): {
                 ('nested', 1, 'nested_mid'):
                 [
-                    (expected_mid_1_deep_0, expected_mid_1_deep_0_trans),
-                    (expected_mid_1_deep_1, expected_mid_1_deep_1_trans)
+                    expected_mid_1_deep_0, expected_mid_1_deep_1
                 ]
             }
         }
-        expected_mid_0_trans = {
-            ('nested', 0, 'top'): {
-                Initial: T(('nested', 0, 'blah')),
-            },
-            ('nested', 0, 'nested_mid'): {
-                A: Local(('nested', 0, 'fff')),
-            }
-        }
-        expected_mid_1_trans = {
-            ('nested', 1, 'top'): {
-                Initial: T(('nested', 1, 'blah')),
-            },
-            ('nested', 1, 'nested_mid'): {
-                A: Local(('nested', 1, 'fff')),
-            }
-        }
+
 
         self.expected_states = {
             ('top',): {
                 ('nested',):
                 [
-                    (expected_mid_0, expected_mid_0_trans),
-                    (expected_mid_1, expected_mid_1_trans),
+                    expected_mid_0, expected_mid_1
                 ],
                 ('dumb',): {}
             }
         }
-        self.expected_trans = {
+        self.expected_trans = {  # all transition dicts are flattened into one
             ('top',): {
                 Initial: T(('nested',)),
             },
             ('dumb',): {
                 A: Local(('top',))
+            },
+            ('nested', 0, 'nested_mid', 0, 'top'): {
+                Initial: T(('nested', 0, 'nested_mid', 0, 'nested_deep_2')),
+            },
+            ('nested', 0, 'nested_mid', 0, 'nested_deep_1'): {
+                A: T(('nested', 0, 'nested_mid', 0, 'renaming is dumb')),
+            },
+            ('nested', 0, 'top'): {
+                Initial: T(('nested', 0, 'blah')),
+            },
+            ('nested', 0, 'nested_mid'): {
+                A: Local(('nested', 0, 'fff')),
+            },
+            ('nested', 1, 'top'): {
+                Initial: T(('nested', 1, 'blah')),
+            },
+            ('nested', 1, 'nested_mid'): {
+                A: Local(('nested', 1, 'fff')),
+            },
+            ('nested', 0, 'nested_mid', 1, 'top'): {
+                Initial: T(('nested', 0, 'nested_mid', 1, 'nested_deep_2')),
+            },
+            ('nested', 0, 'nested_mid', 1, 'nested_deep_1'): {
+                A: T(('nested', 0, 'nested_mid', 1, 'renaming is dumb')),
+            },
+            ('nested', 1, 'nested_mid', 0, 'top'): {
+                Initial: T(('nested', 1, 'nested_mid', 0, 'nested_deep_2')),
+            },
+            ('nested', 1, 'nested_mid', 0, 'nested_deep_1'): {
+                A: T(('nested', 1, 'nested_mid', 0, 'renaming is dumb')),
+            },
+            ('nested', 1, 'nested_mid', 1, 'top'): {
+                Initial: T(('nested', 1, 'nested_mid', 1, 'nested_deep_2')),
+            },
+            ('nested', 1, 'nested_mid', 1, 'nested_deep_1'): {
+                A: T(('nested', 1, 'nested_mid', 1, 'renaming is dumb')),
             }
         }
 

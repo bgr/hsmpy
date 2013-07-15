@@ -593,19 +593,27 @@ def _rename(states_dict, trans_dict, prefix=None):
         """Renames states and submachines accordingly"""
         if isinstance(val, list):  # go into submachines and add prefixes
             new_prefix = lambda i: _add_prefix(state_name, prefix) + (i,)
-            new_val = [_rename(sdict, tdict, new_prefix(i))
-                       for i, (sdict, tdict) in enumerate(val)]
+            # get renamed states and renamed trans for every submachine
+            subs, trans = zip(*[_rename(sdict, tdict, new_prefix(i))
+                                for i, (sdict, tdict) in enumerate(val)])
+            # subs should be a list of dicts (submachines)
+            subs = list(subs)
+            # merge all trans dicts into one dict
+            trans = dict([kv for dct in trans for kv in dct.items()])
         elif isinstance(val, dict):
-            new_val, _ = _rename(val, {}, prefix)
+            # get renamed states (trans are the same, so {}) for nested states
+            subs, trans = _rename(val, {}, prefix)
+            trans = dict(trans)
         else:
             raise ValueError("Invalid element")  # TODO: move to validation
-        return (_add_prefix(state_name, prefix), new_val)
+        return (_add_prefix(state_name, prefix), subs, trans)
 
-    new_states = dict([cond_rename(state_name, list_or_dict)
-                       for state_name, list_or_dict in states_dict.items()])
+    renamed = [cond_rename(sn, val) for sn, val in states_dict.items()]
 
-    new_trans = _rename_transitions(trans_dict, prefix)
-    return (new_states, new_trans)
+    renamed_states = dict([(k, v) for k, v, _ in renamed])
+    renamed_trans = dict([kv for _, _, dct in renamed for kv in dct.items()])
+    renamed_trans.update(_rename_transitions(trans_dict, prefix))
+    return (renamed_states, renamed_trans)
 
 
 # validation methods:
