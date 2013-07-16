@@ -1,4 +1,4 @@
-from hsmpy import Event, State, CompositeState, SubmachinesState, Initial
+from hsmpy import Event, State, Initial
 from hsmpy import Transition as T
 from hsmpy import InternalTransition as Internal
 from hsmpy import LocalTransition as Local
@@ -20,32 +20,8 @@ def hsmlog(instance, hsm, action):
 
 
 class LoggingState(State):
-    def __init__(self, log_id=None):
-        super(LoggingState, self).__init__()
-        self._log_id = log_id
-
-    def enter(self, evt, hsm):
-        hsmlog(self, hsm, 'enter')
-
-    def exit(self, evt, hsm):
-        hsmlog(self, hsm, 'exit')
-
-
-class LoggingCompositeState(CompositeState):
-    def __init__(self, states, log_id=None):
-        super(LoggingCompositeState, self).__init__(states)
-        self._log_id = log_id
-
-    def enter(self, evt, hsm):
-        hsmlog(self, hsm, 'enter')
-
-    def exit(self, evt, hsm):
-        hsmlog(self, hsm, 'exit')
-
-
-class LoggingSubmachinesState(SubmachinesState):
-    def __init__(self, machines, log_id=None):
-        super(LoggingSubmachinesState, self).__init__(machines)
+    def __init__(self, log_id=None, states=None):
+        super(LoggingState, self).__init__(states)
         self._log_id = log_id
 
     def enter(self, evt, hsm):
@@ -68,7 +44,7 @@ class I(Event): pass
 class TERMINATE(Event): pass
 
 
-def make_miro_machine():
+def make_miro_machine(use_logging):
     """
         Returns (states, transitions) tuple describing the test machine layout
         as featured in Miro Samek's "A Crash Course in UML State Machines":
@@ -78,6 +54,8 @@ def make_miro_machine():
         that functionality is tested separately.
     """
     # transition guards
+
+    Cls = LoggingState if use_logging else State
 
     def foo_is_False(evt, hsm):
         return hsm.data.foo is False
@@ -98,18 +76,18 @@ def make_miro_machine():
 
 
     states = {
-        'top': LoggingCompositeState({
-            's': LoggingCompositeState({
-                's1': LoggingCompositeState({
-                    's11': LoggingState(),
+        'top': Cls({
+            's': Cls({
+                's1': Cls({
+                    's11': Cls(),
                 }),
-                's2': LoggingCompositeState({
-                    's21': LoggingCompositeState({
-                        's211': LoggingState()
+                's2': Cls({
+                    's21': Cls({
+                        's211': Cls()
                     })
                 })
             }),
-            'final': LoggingState()
+            'final': Cls()
         })
     }
 
@@ -173,7 +151,7 @@ class CA_loc(Event): pass
 class CB_loc(Event): pass
 
 
-def make_nested_machine():
+def make_nested_machine(use_logging):
     """
         Returns (states, transitions) tuple describing the machine layout with
         three nested states A[B[C]] (contained within 'top' state), having
@@ -184,11 +162,13 @@ def make_nested_machine():
             * outwards: C-(CB)->B, C-(CA)->A, B-(BA)->A (local and external)
     """
 
+    Cls = LoggingState if use_logging else State
+
     states = {
-        'top': LoggingCompositeState({
-            'A': LoggingCompositeState({
-                'B': LoggingCompositeState({
-                    'C': LoggingState(),
+        'top': Cls({
+            'A': Cls({
+                'B': Cls({
+                    'C': Cls(),
                 })
             })
         })
@@ -226,7 +206,7 @@ def make_nested_machine():
     return (states, transitions)
 
 
-def make_submachines_machine():
+def make_submachines_machine(use_logging):
     """
         Machine testing "orthogonal" regions functionality aka
         SubmachinesState. It has two children states: *left* and *right*:
@@ -235,13 +215,14 @@ def make_submachines_machine():
         submachines. All three submachines are identical and respond only to A
         and TERMINATE events. Toplevel machine responds to A, B and TERMINATE.
     """
+    Cls = LoggingState if use_logging else State
     submachines = []
     for i in range(3):  # make a couple of identical machines
         sub_states = {
-            'top': LoggingCompositeState({
-                'start': LoggingState(),
-                'right': LoggingState(),
-                'final': LoggingState(),
+            'top': Cls({
+                'start': Cls(),
+                'right': Cls(),
+                'final': Cls(),
             })
         }
         sub_trans = {
@@ -259,13 +240,13 @@ def make_submachines_machine():
         submachines += [(sub_states, sub_trans)]
 
     states = {
-        'top': LoggingCompositeState({
-            'left': LoggingSubmachinesState([
+        'top': Cls({
+            'left': Cls([
                 submachines[0],
             ]),
-            'right': LoggingCompositeState({
-                'dumb': LoggingState(),
-                'subs': LoggingSubmachinesState([
+            'right': Cls({
+                'dumb': Cls(),
+                'subs': Cls([
                     submachines[1],
                     submachines[2],
                 ]),

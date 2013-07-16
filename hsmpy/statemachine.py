@@ -1,27 +1,129 @@
 import logging
 from collections import namedtuple
 from eventbus import Event
+from copy import copy
 
 _log = logging.getLogger(__name__)
 
 
+class State(object):
+    def __init__(self, states=None, on_enter=None, on_exit=None):
+        """
+            Constructor
+
+            Parameters
+            ----------
+            states : dict or list (optional, empty dict by default)
+                states can be a:
+                    * dict, which makes this state a composite state that
+                      has nested children substates
+                    * list of (states_dict, transition_map) tuples, which
+                      makes this state a container for sub-machines defined by
+                      those tuples
+            on_enter : function
+                function to be called when state is entered, after state's
+                *enter* method
+            on_exit : function
+                function to be called when state is exited, before state's
+                *exit* method
+        """
+        self.states = {} if states is None else states
+        self.parent = None
+        self.name = 'unnamed'
+        self.kind = 'unknown'
+        self.on_enter = on_enter or do_nothing
+        self.on_exit = on_exit or do_nothing
+
+    def _enter(self, evt, hsm):
+        """Used internally by HSM"""
+        self.enter(evt, hsm)
+        self.on_enter(evt, hsm)
+
+    def _exit(self, evt, hsm):
+        """Used internally by HSM"""
+        self.on_exit(evt, hsm)
+        self.exit(evt, hsm)
+
+    def enter(self, evt, hsm):  # override
+        """
+            Called when entering this state, triggered by some transition.
+
+            Override this function to implement actions that should be
+            performed when entering the state.
+
+            In addition to those actions, if *enter* argument was passed to
+            constructor, that function will be invoked **after** this one.
+
+            Parameters
+            ----------
+            evt : Event
+                event instance that triggered the transition
+            hsm : HSM
+                instance of HSM that this state is part of, useful for
+                accessing data shared between all states
+        """
+        pass
+
+    def exit(self, evt, hsm):  # override
+        """
+            Called when exiting this state, triggered by some transition.
+
+            Override this function to implement actions that should be
+            performed when exiting the state.
+
+            In addition to those actions, if *exit* argument was passed to
+            constructor, that function will be invoked **before** this one.
+
+            Parameters
+            ----------
+            evt : Event
+                event instance that triggered the transition
+            hsm : HSM
+                instance of HSM that this state is part of, useful for
+                accessing data shared between all states
+        """
+        pass
+
+    def __repr__(self):
+        return "{0} '{1}' ({2})".format(self.__class__.__name__,
+                                        self.name, self.kind)
+
+    def __getitem__(self, key):
+        return self.states[key]
+
+    @property
+    def __attrs(self):
+        # doesn't consider parent state, parents can be different!
+        return (self.name, self.on_enter, self.on_exit, self.kind)
+
+    def __eq__(self, other):
+        def check_states(a, b):
+            if isinstance(a.states, list):  # already checked for same type
+                key = lambda s: s.name
+                return sorted(a.states, key=key) == sorted(b.states, key=key)
+            else:
+                return a.states == b.states
+
+        return (type(other) == type(self)
+                and self.__attrs == other.__attrs
+                and type(self.states) == type(other.states)
+                and len(self.states) == len(other.states)
+                and check_states(self, other))
+
+
 class Initial(Event):
-    """Used to mark initial transitions of CompositeStates"""
+    """Used for defining initial transitions of composite states."""
     pass
 
 
 # transitions
 
-no_action = lambda evt, hsm: None  # action does nothing by default
-passing_guard = lambda evt, hsm: True  # make guard always pass by default
+do_nothing = lambda evt, hsm: None  # action does nothing by default
+always_true = lambda evt, hsm: True  # make guard always pass by default
 
 
-def _make_tran(which, target, action=None, guard=None):
-    if action is None:
-        action = no_action
-    if guard is None:
-        guard = passing_guard
-    return which(target, action, guard)
+def _make_tran(Which, target, action=None, guard=None):
+    return Which(target, action or do_nothing, guard or always_true)
 
 
 _Transition = namedtuple('Transition', 'target, action, guard')
@@ -31,7 +133,7 @@ _Internal = namedtuple('InternalTransition', 'target, action, guard')
 
 def Transition(target, action=None, guard=None):
     """
-        Regular transition.
+        Regular transition. Also used for initial transitions.
 
         Parameters
         ----------
@@ -50,7 +152,12 @@ def Transition(target, action=None, guard=None):
 
 
 def LocalTransition(target, action=None, guard=None):
-    """Local transition"""
+    """
+        Local transition.
+
+        Valid only from parent state to child state or vice versa. Doesn't
+        cause exiting from parent state.
+    """
     return _make_tran(_Local, target, action, guard)
 
 
@@ -58,80 +165,9 @@ def InternalTransition(action=None, guard=None):
     """
         Internal transition.
 
-        Doesn't have a target state, doesn't cause state change.
+        Doesn't have a target state. Doesn't cause change of states.
     """
     return _make_tran(_Internal, None, action, guard)
-
-
-
-class State(object):
-    def __init__(self):
-        """
-            Constructor
-        """
-        self.states = {}  # for cleaner code, only CompositeState has substates
-        self._hsm = None  # maybe not needed
-        self._parent = None
-
-    def enter(self, evt, hsm):  # override
-        """
-            Called when entering this state, triggered by some transition.
-
-            Parameters
-            ----------
-            evt : Event
-                event instance that triggered the transition
-            hsm : HSM
-                instance of HSM that this state is part of, useful for
-                accessing data shared between all states
-        """
-        pass
-
-    def exit(self, evt, hsm):  # override
-        """Called when exiting this state (see 'enter')"""
-        pass
-
-    def __repr__(self):
-        return "{0} '{1}'".format(self.__class__.__name__, self.name)
-
-    def __getitem__(self, key):
-        return self.states[key]
-
-
-class CompositeState(State):
-    def __init__(self, states):
-        """
-            Constructor
-
-            State with ability to contain nested sub-states
-
-            Parameters
-            ----------
-            states : dict
-                mapping of state names to state instances, defining immediate
-                children of this state
-        """
-        super(CompositeState, self).__init__()
-        self.states = states
-
-
-class SubmachinesState(State):
-    def __init__(self, machines):
-        """
-            Constructor
-
-            State with ability to contain multiple sub-machines that are all
-            running at the same time when this state is active.
-            Acts as a under-featured substitute for orthogonal regions.
-
-            Parameters
-            ----------
-            machines : list
-                list of tuples (states, transitions), where each tuple defines
-                one submachine
-        """
-        super(SubmachinesState, self).__init__()
-        self.machines = machines
 
 
 class Action(object):
@@ -166,55 +202,34 @@ class Action(object):
 
 
 class HSM(object):
-    def __init__(self, states_map, transitions_map):
+    def __init__(self, states_map, transitions_map, skip_validation=False):
         """
             Constructor
-
-            Note: Immediately upon calling it will traverse all states in
-            states_map and assign *name*, *_parent* and *_hsm* properties to
-            each state, thus modifying the states_map, which makes this
-            constructor a bit destructive.
 
             Parameters
             ----------
             states_map : dict
                 dictionary that describes state hierarchy, it should have
-                exactly one top-level item (instance of CompositeState that
-                acts as the container for all other nested states within it)
+                exactly one top-level item (state that acts as the container
+                for all other nested states within it)
             transitions_map : dict
                 dictionary that maps states described in states_map to their
                 corresponding event-transition map
         """
-        # states tree must have single state as root
-        self.states = states_map
-        self.trans = transitions_map
+        top, flattened, trans = _parse(states_map, transitions_map)
+        self.flattened = flattened
+        self.root = top
+        self.trans = trans
+        if not skip_validation:
+            self._validate(states_map, self.trans, self.flattened)
         # empty object which can be used as a shared data between all states
         self.data = type('HSM_data', (object,), {})()
-        self._log = []
         self._running = False
-        self.flattened = self._traverse_and_wire_up(self.states)
 
-    def _traverse_and_wire_up(self, states_dict, parent_state=None):
-        """
-            Recursively traverses the tree described by states_dict and updates
-            states' *name*, *_parent* and *_hsm* properties.
-            Returns flattened list of all state **instances**.
-        """
-        traversed = []  # will contain flattened subtree of state instances
-        # traverse state tree
-        for key_name, state in states_dict.items():
-            state._parent = parent_state  # make state know its parent state
-            state.name = key_name  # make state know its name
-            state._hsm = self      # make state know about its HSM
-            traversed += [state]   # add state to traversed list
-            traversed += self._traverse_and_wire_up(state.states, state)
-        return traversed
 
     def start(self, eventbus):
         """
-            Checks the machine for valid structure and, if everything is
-            correct, starts it (starts responding to events), otherwise raises
-            exception.
+            Starts the machine (starts responding to events).
 
             Parameters
             ----------
@@ -230,8 +245,6 @@ class HSM(object):
         if self._running:
             raise RuntimeError("Machine is already running")
 
-        self._validate()
-
         self.eb = eventbus
 
         self.event_set = _get_events(self.flattened, self.trans)
@@ -239,7 +252,7 @@ class HSM(object):
 
         self._running = True
 
-        self._current_state = self.states.values()[0]  # set root as current
+        self.current_state_set = set([self.root])
 
         # kick-start the machine
         # it has to be done by dispatching unique event (to make sure this
@@ -251,9 +264,8 @@ class HSM(object):
             pass
 
         def kick_start(evt=None):
-            _log.debug("Starting HSM, entering '{0}' state".format(
-                self._current_state.name))
-            self._current_state.enter(None, self)  # enter top state
+            _log.debug("Starting HSM, entering '{0}' state".format(self.root))
+            self.root._enter(None, self)  # enter top state
             self._handle_event(Initial())
 
         self.eb.register(KickStart, kick_start)
@@ -281,9 +293,9 @@ class HSM(object):
             it if none of the states in HSM's current state set is interested
             in that event (or guards don't pass).
         """
-        exits, entries, new_state = _get_transition_sequence(
-            self._current_state, event_instance,
-            self.flattened, self.trans, self)
+        exits, trans, entries, new_state_set = _get_transition_sequences(
+            self.current_state_set, event_instance, self.flattened, self.trans,
+            self)
 
         actions = exits + entries
         _log.debug("Performing actions: {0}".format(', '.join(
@@ -293,24 +305,22 @@ class HSM(object):
 
         # new_state might be None if it was an internal transition
         # or no state responds to event
-        if new_state:
-            self._current_state = new_state
-            _log.debug("HSM is now in '{0}' state".format(new_state.name))
+        if new_state_set:
+            self.current_state_set = new_state_set
+            _log.debug("HSM is now in '{0}'".format(new_state_set))
 
-    def _validate(self):
+    def _validate(self, original_states, trans, flat):
         """
             Runs a series of checks on the given state machine layout described
             by given states_map and transitions_map. It checks that:
 
                 * states_map must have single top (container) state
                 * there are no unreachable states
-                * states_map doesn't contain multiple occurrences of same state
-                  object instance
                 * states_map doesn't contain occurrences of states with same
                   name
                 * transitions_map doesn't have keys or transitions that point
                   to nonexistent states
-                * there are no CompositeStates with missing or invalid initial
+                * there are no composite states with missing or invalid initial
                   transitions
                 * no invalid local transitions
 
@@ -328,21 +338,14 @@ class HSM(object):
                          for n, el in enumerate(ls)]
                 rs(msg + '\n' + '\n'.join(items))
 
-        flat = self.flattened
-        states = self.states
-        trans = self.trans
-
-        if not len(states) == 1:
+        if not len(original_states) == 1:
             rs("State tree should have exactly one top (root) state")
 
-        unreachable = _find_unreachable_states(states.values()[0], flat, trans)
+        unreachable = _find_unreachable_states(self.root, flat, trans)
         chk("Unreachable states", unreachable)
 
         duplicate_names = _find_duplicate_names(flat)
         chk("Duplicate state names", duplicate_names)
-
-        duplicate_instances = _find_duplicates(flat)
-        chk("Duplicate state instances", duplicate_instances)
 
         nonx_sources = _find_nonexistent_transition_sources(flat, trans)
         chk("Keys in trans_map pointing to nonexistent states", nonx_sources)
@@ -351,7 +354,7 @@ class HSM(object):
         chk("Transition targets pointing to nonexistent states", nonx_targets)
 
         miss = _find_missing_initial_transitions(flat, trans)
-        chk("CompositeStates with missing initial transitions", miss)
+        chk("Composite states with missing initial transitions", miss)
 
         inv_init = _find_invalid_initial_transitions(flat, trans)
         chk("Invalid initial transitions (must not be loop, "
@@ -363,15 +366,6 @@ class HSM(object):
 
 
 # helper functions:
-
-def _get_children(parent_state):
-    """
-        Returns the list of all children state **instances** in sub-tree of
-        given parent state **instance**.
-    """
-    direct_children = parent_state.states.values()
-    return direct_children + [ch for dir_ch in direct_children
-                              for ch in _get_children(dir_ch)]
 
 
 def _get_state_by_name(state_name, flat_state_list):
@@ -414,9 +408,9 @@ def _get_path_from_root(to_state):
         Returns list of state **instances** that represent the path
         from root (inclusive) to given state.
     """
-    if to_state._parent is None:
+    if to_state.parent is None:
         return [to_state]
-    return _get_path_from_root(to_state._parent) + [to_state]
+    return _get_path_from_root(to_state.parent) + [to_state]
 
 
 def _get_path(from_state, to_state):
@@ -445,60 +439,65 @@ def _get_common_parent(state_A, state_B):
     return _get_path(state_A, state_B)[1]
 
 
-def _get_response(source_state, event_instance, trans_dict, hsm):
+def _get_single_response(source_state, event_instance, trans_dict, hsm):
     """
         Returns state that responds to given event, and transition to follow.
-
-        When machine is in *source_state* and *event_instance* happens, it
-        might not be the *source_state* that responds to that event, but some
-        parent state (or state in another orthogonal region - not yet
-        implemented).
-
         Return value is tuple (responding_state_instance, transition).
     """
+    # TODO submachines
     tran = trans_dict.get(source_state.name, {}).get(event_instance.__class__)
     # transition exists and its guard passes
     if tran is not None and tran.guard(event_instance, hsm):
         return (source_state, tran)
     # try looking up the hierarchy
-    if source_state._parent is not None:
-        return _get_response(source_state._parent, event_instance,
-                             trans_dict, hsm)
-    return (None, None)
+    if source_state.parent is not None:
+        return _get_single_response(source_state.parent, event_instance,
+                                    trans_dict, hsm)
+    return None
 
 
-def _get_transition_sequence(source_state, event_instance,
-                             flat_state_list, trans_dict, hsm):
+def _get_responses(state_set, event_instance, trans_dict, hsm):
     """
-        Returns transition action sequence.
+        Returns set of (state, transition) tuples describing all states that
+        respond to given *event_instance* when machine is in the set of states
+        specified by *state_set*, and transitions to follow.
 
-        Returned value is 3-tuple:
-        (exit_actions_list, entry_actions_list, resulting_state), whose first
-        two elements are lists containing ordered instances of Actions to be
-        executed to perform the transition from given *source_state* to the
-        returned *resulting_state* which is the state machine will be in after
-        parforming the transition. If no state responds to given
-        *event_instance*, lists will be empty and value of *resulting_state*
-        will be None. If state responds via internal transition
-        *exit_actions_list* will be empty, *entry_actions_list* will contain
-        single transition action and *resulting_state* will be None since no
-        change of state is required.
+        When machine is in one state and *event_instance* happens, it might not
+        be that state which responds to the event, but some parent state.
+
+        Return value is set of tuples (responding_state, transition).
+    """
+    responses = [_get_single_response(st, event_instance, trans_dict, hsm)
+                 for st in state_set]
+    return set([resp for resp in responses if resp is not None])
+
+
+def _get_single_transition_sequence(source_state, event_instance,
+                                    flat_state_list, trans_dict, hsm):
+    """
+        Returns transition action sequence for single state response.
+
+        Returned value is 4-tuple:
+        (exit_list, transition, entry_list, resulting_state),
+        where *exit_list* and *entry_list* contain ordered instances of
+        states to be exited/entered to perform the *transition* from given
+        *source_state* to the returned *resulting_state* which is the state
+        machine will be in after parforming the transition. If no state
+        responds to given *event_instance*, lists will be empty and values of
+        *transition* and *resulting_state* will be None. If state responds via
+        *internal transition*, lists will be empty and *resulting_state* will
+        be None since no change of state is required.
     """
     # state that responds to event might not be the source_state
-    resp_state, transition = _get_response(source_state, event_instance,
-                                           trans_dict, hsm)
+    resp_state, transition = _get_single_response(source_state, event_instance,
+                                                  trans_dict, hsm)
     if resp_state is None:
-        return ([], [], None)  # no state responds to event
-
-    action_name = lambda st, descr: '{0}-{1}'.format(st.name, descr)
-
-    evt_name = event_instance.__class__.__name__
-    tran_action = Action(action_name(resp_state, evt_name), transition.action)
+        return ([], None, [], None)  # no state responds to event
 
     # in case of internal transition just perform the transition action
     # do not change the state
-    if isinstance(transition, InternalTransition):
-        return ([], [tran_action], None)
+    if isinstance(transition, _Internal):
+        return ([], transition, [], None)
 
     target_state = _get_state_by_name(transition.target, flat_state_list)
 
@@ -512,7 +511,7 @@ def _get_transition_sequence(source_state, event_instance,
     # from parent to child or child to parent just like LOCAL transition but
     # it also exits and reenters the parent state
     is_external_tran = (parent in [resp_state, target_state]
-                        and not isinstance(transition, LocalTransition)
+                        and not isinstance(transition, _Local)
                         and not isinstance(event_instance, Initial))
     state_to_add = []
 
@@ -524,24 +523,133 @@ def _get_transition_sequence(source_state, event_instance,
     exits = exits + state_to_add
     entries = state_to_add + entries
 
-    # wrap in Action objects
-    exit_acts = [Action(action_name(st, 'exit'), st.exit) for st in exits]
-    entry_acts = [Action(action_name(st, 'entry'), st.enter) for st in entries]
 
-    resulting_state = target_state
+    resulting_states = [target_state]
     # if target state is composite, follow its 'initial' transition
     # recursively and append more entry actions to entries list
     # and also update resulting state - the final entered state
-    if isinstance(target_state, CompositeState):
+    if target_state.kind == 'composite':
         # cannot have exits if machine is valid
-        _, more_entry_acts, resulting_state = _get_transition_sequence(
+        _, more_trans, more_entries, resulting_states = _get_transition_sequence(
             target_state, Initial(), flat_state_list, trans_dict, hsm)
-        entry_acts += more_entry_acts
+        entries += more_entries
+    # if target is submachines state, enter each of the submachines
+    elif target_state.kind == 'orthogonal':
+        pass  # TODO
 
-    # original transition action must come before any entry action
-    entry_acts = [tran_action] + entry_acts
+    return (exits, transition, entries, resulting_states)
 
-    return (exit_acts, entry_acts, resulting_state)
+
+def _get_transition_sequences(state_set, event_instance,
+                              flat_state_list, trans_dict, hsm):
+    exits, trans, entries, res_states = zip(
+        *[_get_single_transition_sequence(state, event_instance,
+                                          flat_state_list, trans_dict, hsm)
+          for state in state_set])
+
+    exits = _remove_duplicates(exits)
+    trans = _remove_duplicates(trans)
+    entries = _remove_duplicates(entries)
+    res_states = _remove_duplicates(res_states)
+    return (exits, trans, entries, res_states)
+
+
+    #action_name = lambda st, descr: '{0}-{1}'.format(st.name, descr)
+    #evt_name = event_instance.__class__.__name__
+
+    #tran_action = Action(action_name(resp_state, evt_name), transition.action)
+
+    ## wrap in Action objects
+    #exit_acts = [Action(action_name(st, 'exit'), st.exit) for st in exits]
+    #entry_acts = [Action(action_name(st, 'entry'), st.enter) for st in
+    #entries]
+
+#def _get_transition_sequence(state_set, event_instance,
+                             #flat_state_list, trans_dict, hsm):
+    #"""
+        #Returns transition action sequence.
+
+        #Returned value is 3-tuple:
+        #(exit_actions_list, entry_actions_list, resulting_state), whose first
+        #two elements are lists containing ordered instances of Actions to be
+        #executed to perform the transition from given *source_state* to the
+        #returned *resulting_state* which is the state machine will be in after
+        #parforming the transition. If no state responds to given
+        #*event_instance*, lists will be empty and value of *resulting_state*
+        #will be None. If state responds via internal transition
+        #*exit_actions_list* will be empty, *entry_actions_list* will contain
+        #single transition action and *resulting_state* will be None since no
+        #change of state is required.
+    #"""
+    ## state that responds to event might not be the source_state
+    #responses = _get_responses(state_set, event_instance, trans_dict, hsm)
+
+    #if not responses:
+        #return ([], None)  # no state responds to event
+
+    #exits = []
+    #transitions = []
+    #entries = []
+    #for resp_state, tran in responses:
+
+        #transitions += tran
+        ## in case of internal transition just perform the transition action
+        ## do not add any exit and entry actions
+        #if isinstance(tran, InternalTransition):
+            #continue
+
+        #target_state = _get_state_by_name(tran.target, flat_state_list)
+
+        ## states to exit to get to responding state
+        #exits_till_resp, _, _ = _get_path(source_state, resp_state)
+        ## more states to exit from responding state and then to enter to
+        #target
+        #exits_from_resp, parent, entries = _get_path(resp_state, target_state)
+        #exits += exits_till_resp + exits_from_resp
+
+        ## also add exit and reentry actions for responding state if transition
+        ## is a LOOP transition or EXTERNAL transition (external transition
+        #goes
+        ## from parent to child or child to parent just like LOCAL transition
+        ## but it also exits and reenters the parent state
+        #is_external_tran = (parent in [resp_state, target_state]
+                            #and not isinstance(tran, LocalTransition)
+                            #and not isinstance(event_instance, Initial))
+        #state_to_add = []
+        #if resp_state is target_state:
+            #state_to_add = [resp_state]
+        #elif is_external_tran:
+            #state_to_add = [parent]
+
+        #exits = exits + state_to_add
+        #entries = state_to_add + entries
+
+
+    #action_name = lambda st, descr: '{0}-{1}'.format(st.name, descr)
+    #evt_name = event_instance.__class__.__name__
+    #tran_actions = [Action(action_name(resp_st, evt_name), tran.action)
+                    #for resp_st, tran in responses]
+    ## original transition action must come before any entry action
+    #entry_acts = [tran_action] + entry_acts
+
+    ## wrap in Action objects
+    #exit_acts = [Action(action_name(st, 'exit'), st.exit) for st in exits]
+    #entry_acts = [Action(action_name(st, 'entry'), st.enter) for st in
+    #entries]
+
+    #actions = exit_acts + tran_acts + entry_acts
+
+    #resulting_state = target_state
+    ## if target state is composite, follow its 'initial' transition
+    ## recursively and append more entry actions to entries list
+    ## and also update resulting state - the final entered state
+    #if isinstance(target_state, CompositeState):
+        ## cannot have exits if machine is valid
+        #more_entry_acts, resulting_state = _get_transition_sequence(
+            #target_state, Initial(), flat_state_list, trans_dict, hsm)
+        #actions += more_entry_acts
+
+    #return (actions, resulting_state)
 
 
 def _get_events(flat_state_list, trans_dict):
@@ -588,32 +696,92 @@ def _rename_transitions(trans_dict, prefix):
                  for src_name, outg in trans_dict.items()])
 
 
-def _rename(states_dict, trans_dict, prefix=None):
-    def cond_rename(state_name, val):
-        """Renames states and submachines accordingly"""
-        if isinstance(val, list):  # go into submachines and add prefixes
-            new_prefix = lambda i: _add_prefix(state_name, prefix) + (i,)
+def _reformat(states_dict, trans_dict, prefix=None):
+    """
+        Renames states and transition targets.
+        Extracts trans dicts from tuples that define orthogonal submachines
+        and appends them all to one main trans_dict.
+    """
+    def fix(state_name, val, parent_state=None):
+        """Recursively rename and convert to state instance if needed"""
+        if isinstance(val, State):
+            # already defined as state
+            # copy it, set name and parent, fix children states recursively
+            new_state = copy(val)
+            children = val.states
+        else:
+            new_state = State()
+            children = val
+
+        new_state.name = _add_prefix(state_name, prefix)
+        new_state.parent = parent_state
+
+        if not children:  # empty list or dict
+            new_state.kind = 'leaf'
+            subs, trans = ([], {})
+        elif isinstance(children, list):
+            new_state.kind = 'orthogonal'
+            ch_prefix = lambda i: _add_prefix(state_name, prefix) + (i,)
             # get renamed states and renamed trans for every submachine
-            subs, trans = zip(*[_rename(sdict, tdict, new_prefix(i))
-                                for i, (sdict, tdict) in enumerate(val)])
-            # subs should be a list of dicts (submachines)
-            subs = list(subs)
+            subs, trans = zip(*[_reformat(sdict, tdict, ch_prefix(i))
+                                for i, (sdict, tdict) in enumerate(children)])
+            # subs is tuple of lists with one element (top state of submachine
+            # assumes that validation has passed), converto into list of
+            # submachines
+            subs = [s for ls in subs for s in ls]
             # merge all trans dicts into one dict
             trans = dict([kv for dct in trans for kv in dct.items()])
-        elif isinstance(val, dict):
-            # get renamed states (trans are the same, so {}) for nested states
-            subs, trans = _rename(val, {}, prefix)
+        elif isinstance(children, dict):
+            new_state.kind = 'composite'
+            # trans are the same, so {} for nested states
+            subs, trans = _reformat(children, {}, prefix)
             trans = dict(trans)
         else:
             raise ValueError("Invalid element")  # TODO: move to validation
-        return (_add_prefix(state_name, prefix), subs, trans)
 
-    renamed = [cond_rename(sn, val) for sn, val in states_dict.items()]
+        for sub in subs:
+            sub.parent = new_state
+        new_state.states = subs
+        return (new_state, trans)
 
-    renamed_states = dict([(k, v) for k, v, _ in renamed])
-    renamed_trans = dict([kv for _, _, dct in renamed for kv in dct.items()])
-    renamed_trans.update(_rename_transitions(trans_dict, prefix))
-    return (renamed_states, renamed_trans)
+    fixed = [fix(sn, val) for sn, val in states_dict.items()]
+
+    fixed_states = [st for st, _ in fixed]
+    fixed_trans = dict([kv for _, dct in fixed for kv in dct.items()])
+    fixed_trans.update(_rename_transitions(trans_dict, prefix))
+    return (fixed_states, fixed_trans)
+
+
+def _parse(states_dict, trans_dict):
+    """
+        Recursively traverses the state tree described by states_dict and
+        performs the following transformations:
+            * renames states (changes values of dict's keys)
+            * renames transition targets
+            * state instances are created from dict's values
+                * if value is dict it is a state (with optional sub-states)
+                * if value is list it is a state with orthogonal sub-machines
+            * in case of orthogonal sub-machine state, whose elements are
+              tuples (states, transitions), extracts transitions and appends
+              them to main trans_dict
+
+        Returns tuple (top_state, flattened_state_list, full_trans_dict).
+    """
+    renamed_states, renamed_trans = _reformat(states_dict, trans_dict)
+    top_state = renamed_states[0]
+    flattened = _flatten(renamed_states)
+    return (top_state, flattened, renamed_trans)
+
+
+def _flatten(state_list):
+    return state_list + [substate_element for state in state_list
+                         for substate_element in _flatten(state.states)]
+
+
+def _remove_duplicates(ls):
+    seen = set()
+    add_to_seen = lambda elem: not seen.add(elem)  # always returns True
+    return [elem for elem in ls if elem not in seen and add_to_seen(elem)]
 
 
 # validation methods:
@@ -650,17 +818,17 @@ def _find_nonexistent_transition_targets(flat_state_list, trans_dict):
     return [tran.target
             for dct in trans_dict.values()  # transitions dict for state
             for tran in dct.values()  # transition in state's transitions dict
-            if (not isinstance(tran, InternalTransition)  # don't have targets
+            if (not isinstance(tran, _Internal)  # don't have targets
                 and tran.target not in state_names)]  # no corresponding state
 
 
 def _find_missing_initial_transitions(flat_state_list, trans_dict):
     """
-        Returns list of CompositeState **instances** that don't have initial
+        Returns list of composite state **instances** that don't have initial
         transition defined in transitions map.
     """
     composites = [st for st in flat_state_list
-                  if isinstance(st, CompositeState)]
+                  if st.kind == 'composite']
     return [st for st in composites
             if (trans_dict.get(st.name) is None or
                 trans_dict.get(st.name).get(Initial) is None)]
@@ -668,25 +836,26 @@ def _find_missing_initial_transitions(flat_state_list, trans_dict):
 
 def _find_invalid_initial_transitions(flat_state_list, trans_dict):
     """
-        Returns list of CompositeState **instances** that have invalid initial
+        Returns list of composite state **instances** that have invalid initial
         transition defined.
 
         Initial transition is invalid if it's a self-loop, is defined as
-        LocalTransition, has a target which is not a child of the state,
-        or has a guard (not yet implemented).
+        LocalTransition, has a target which is not a child of the state.
     """
-    # TODO: OR have guards
+    # TODO: OR have guards (implemented but untested)
     without = _find_missing_initial_transitions(flat_state_list, trans_dict)
     composites = [st for st in flat_state_list
-                  if isinstance(st, CompositeState) and st not in without]
+                  if st.kind == 'composite' and st not in without]
 
-    is_local = lambda tran: isinstance(tran, LocalTransition)
-    get_init_tran = lambda state: trans_dict[state.name][Initial]
+    is_local = lambda tran: isinstance(tran, _Local)
+    init_tran_of = lambda state: trans_dict[state.name][Initial]
+    init_tran_target_of = lambda state: _get_state_by_name(
+        init_tran_of(state).target, flat_state_list)
 
-    return [st for st in composites
-            if is_local(get_init_tran(st)) or
-            _get_state_by_name(get_init_tran(st).target, flat_state_list)
-            not in _get_children(st)]
+    return [st for st in composites if is_local(init_tran_of(st))
+            or init_tran_of(st).target == st.name
+            or st not in _get_path_from_root(init_tran_target_of(st))
+            or init_tran_of(st).guard(None, None) is not True]
 
 
 def _find_invalid_local_transitions(flat_state_list, trans_dict):
@@ -711,7 +880,7 @@ def _find_invalid_local_transitions(flat_state_list, trans_dict):
     return [(st_name, evt, tran) for st_name, outgoing in trans_dict.items()
             for evt, tran in outgoing.items()
             if st_name not in bad_state_names and
-            isinstance(tran, LocalTransition) and (
+            isinstance(tran, _Local) and (
             st_name == tran.target or  # loop
             common_parent(st_name, tran.target) not in [st_name, tran.target])]
 
