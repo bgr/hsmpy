@@ -314,7 +314,7 @@ class HSM(object):
 
         def kick_start(evt=None):
             _log.debug("Starting HSM, entering '{0}' state".format(self.root))
-            self.root._enter(None, self)  # enter top state
+            self.root._enter(Initial(), self)  # force enter root state
             self._handle_event(Initial())
 
         self.eb.register(KickStart, kick_start)
@@ -510,6 +510,12 @@ def _get_state_response(source_state, event_instance, trans_dict, hsm):
     return (None, None)
 
 
+def _with_rest(ls):
+    """Generator - yields tuples (element, all_other_elements)"""
+    for i, el in enumerate(ls):
+        yield (el, ls[:i] + ls[i + 1:])
+
+
 def _get_responses(state_set, event, trans_dict, hsm):
     """
         Returns list of (source_state, responding_state, transition) tuples
@@ -522,11 +528,29 @@ def _get_responses(state_set, event, trans_dict, hsm):
 
         Return value is set of tuples (responding_state, transition).
     """
+    # prepend source state to response, it might be needed
     resps = [( (st,) + _get_state_response(st, event, trans_dict, hsm) )
              for st in state_set]
-    filtered = [r for r in resps if r[1] is not None]
-    return filtered or [([], [], [])]
 
+    # exclude empty responses
+    filtered = [r for r in resps if r[1] is not None]
+
+    # remove duplicates
+    filtered = _remove_duplicates(filtered, key=lambda el: el[1].sig)
+
+    is_child_of = lambda ch, par: par in _get_path_from_root(ch)
+
+    # if orthogonal state responded, do not include it in the response list
+    # it if any of its children states responded
+    def can_include(response, rest):
+        __, state, tran = response
+        return (state.kind != 'orthogonal' or not any([is_child_of(st, state)
+                                                       for _, st, _ in rest
+                                                       if st is not state]))
+
+    filtered = [r for r, rest in _with_rest(filtered) if can_include(r, rest)]
+
+    return filtered
 
 
 def _get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
@@ -538,7 +562,7 @@ def _get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
 
     # nothing happens if no state responds to event
     if resp_state is None:
-        return [ ([], [], []) ]
+        return []
 
     # wrap transition into Action
     tran_action = Action(action_name(resp_state, evt_name), tran.action)
@@ -549,16 +573,13 @@ def _get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
     if isinstance(tran, _Internal):
         return [ ([], [tran_action], [src_state]) ]
 
-    exits = []
-    entries = []
-
     target_state = _get_state_by_sig(tran.target, flat_states)
 
     # states to exit in order to get to responding state
     exits_till_resp, _, _ = _get_path(src_state, resp_state)
     # more to exit from responding state and then to enter to get to target
     exits_from_resp, parent, entries = _get_path(resp_state, target_state)
-    exits += exits_till_resp + exits_from_resp
+    exits = exits_till_resp + exits_from_resp
 
     # also add exit and reentry actions for responding state if transition
     # is a LOOP transition or EXTERNAL transition (external transition goes
@@ -574,6 +595,10 @@ def _get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
         state_to_add = [parent]
     exits = exits + state_to_add
     entries = state_to_add + entries
+
+    # for orthogonal states also add entry action to each submachine
+    if target_state.kind == 'orthogonal':
+        entries += target_state.states
 
     # wrap in Action objects
     exit_acts = [Action(action_name(st, 'exit'), st.exit) for st in exits]
@@ -773,10 +798,11 @@ def _flatten(container):
     return [container]  # any other object
 
 
-def _remove_duplicates(ls):
+def _remove_duplicates(ls, key=lambda el: el):
     seen = set()
     add_to_seen = lambda elem: not seen.add(elem)  # always returns True
-    return [elem for elem in ls if elem not in seen and add_to_seen(elem)]
+    return [elem for elem in ls
+            if key(elem) not in seen and add_to_seen(key(elem))]
 
 
 # validation methods:

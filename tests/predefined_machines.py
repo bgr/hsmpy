@@ -4,31 +4,27 @@ from hsmpy import InternalTransition as Internal
 from hsmpy import LocalTransition as Local
 
 
-
-# utility states that log entries and exits into their hsm.data._log dict
-
-
-def hsmlog(instance, hsm, action):
-    if not hasattr(hsm.data, '_log'):
-        hsm.data._log = {}
-    log = hsm.data._log
-    log_id = '{0}_{1}'.format((instance._log_id or instance.name), action)
-    if log_id in log:
-        log[log_id] += 1
-    else:
-        log[log_id] = 1
-
-
 class LoggingState(State):
+    """Utility state that logs entries and exits into hsm.data._log dict."""
     def __init__(self, states=None, log_id=None):
         super(LoggingState, self).__init__(states)
         self._log_id = log_id
 
     def enter(self, evt, hsm):
-        hsmlog(self, hsm, 'enter')
+        self._log(hsm, 'enter')
 
     def exit(self, evt, hsm):
-        hsmlog(self, hsm, 'exit')
+        self._log(hsm, 'exit')
+
+    def _log(self, hsm, action):
+        if not hasattr(hsm.data, '_log'):
+            hsm.data._log = {}
+        log = hsm.data._log
+        log_id = '{0}_{1}'.format((self._log_id or self.name), action)
+        if log_id in log:
+            log[log_id] += 1
+        else:
+            log[log_id] = 1
 
 
 # events
@@ -97,7 +93,7 @@ def make_miro_machine(use_logging):
         },
         's': {
             Initial: T('s11'),
-            E: T('s11'),
+            E: Local('s11'),
             TERMINATE: T('final'),
             I: Internal(guard=foo_is_True, action=set_foo_False),
         },

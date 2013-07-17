@@ -1,5 +1,5 @@
 import pytest
-from hsmpy import HSM  # , EventBus
+from hsmpy import HSM, EventBus
 from hsmpy.statemachine import _get_responses, _get_state_by_sig
 from hsmpy import Initial
 from hsmpy import Transition as T
@@ -95,248 +95,244 @@ class Test_get_response_submachines(object):
                  expected_transition_targets):
         starting_states = [_get_state_by_sig(sig, self.hsm.flattened)
                            for sig in from_states]
-        print starting_states
         resps = _get_responses(starting_states, Event(), self.hsm.trans, None)
-        print resps
+
+        if expected_responding_states or expected_transition_targets:
+            _, resp_states, trans = zip(*resps)
+            assert len(resp_states) == len(expected_responding_states)
+            resp_sigs = set([st.sig for st in resp_states])
+            assert resp_sigs == set(expected_responding_states)
+
+            assert len(trans) == len(expected_transition_targets)
+            target_ids = set([tr.target for tr in trans])
+            assert target_ids == set(expected_transition_targets)
+        else:
+            assert resps == []
 
 
-        _, resp_states, trans = zip(*resps)
+class Test_submachines_working(object):
+    def setup_class(self):
+        states, trans = make_submachines_machine(use_logging=True)
+        self.hsm = HSM(states, trans)
+        self.eb = EventBus()
 
-        assert len(resp_states) == len(expected_responding_states)
-        resp_sigs = set([st.sig for st in resp_states])
-        assert resp_sigs == set(expected_responding_states)
+    def test_enters_submachines_after_start(self):
+        self.hsm.start(self.eb)
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'left_enter': 1,
+            'left[0].top_enter': 1,
+            'left[0].start_enter': 1,
+        }
 
-        assert len(trans) == len(expected_transition_targets)
-        target_ids = set([tr.target for tr in trans])
-        assert target_ids == set(expected_transition_targets)
+    def test_event_A_captured_by_left_submachine(self):
+        self.eb.dispatch(A())
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'left_enter': 1,
+            'left[0].top_enter': 1,
+            'left[0].start_enter': 1,
 
-#class Test_submachines_transition_sequence(object):
-    #def setup_class(self):
-        #states, trans = make_submachines_machine()
-        #self.hsm = HSM(states, trans)
+            'left[0].start_exit': 1,
+            'left[0].right_enter': 1,
+        }
 
+    def test_terminate_left_submachine(self):
+        self.eb.dispatch(TERMINATE())
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'left_enter': 1,
+            'left[0].top_enter': 1,
+            'left[0].start_enter': 1,
+            'left[0].start_exit': 1,
+            'left[0].right_enter': 1,
 
-#class Test_submachines_working(object):
-    #def setup_class(self):
-        #states, trans = make_submachines_machine()
-        #self.hsm = HSM(states, trans)
-        #self.eb = EventBus()
+            'left[0].right_exit': 1,
+            'left[0].final_enter': 1,
+        }
 
-    #def test_enters_submachines_after_start(self):
-        #self.hsm.start(self.eb)
-        #assert self.hsm.data._log == {
-            #'top_enter': 1,
-            #'left_enter': 1,
-            #'left[0].top_enter': 1,
-            #'left[0].left_enter': 1,
-        #}
+    def test_event_A_transitions_to_right(self):
+        self.eb.dispatch(A())
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'left_enter': 1,
+            'left[0].top_enter': 1,
+            'left[0].start_enter': 1,
+            'left[0].start_exit': 1,
+            'left[0].right_enter': 1,
+            'left[0].right_exit': 1,
+            'left[0].final_enter': 1,
 
-    #def test_event_A_captured_by_left_submachine(self):
-        #self.eb.dispatch(A())
-        #assert self.hsm.data._log == {
-            #'top_enter': 1,
-            #'left_enter': 1,
-            #'left[0].top_enter': 1,
-            #'left[0].left_enter': 1,
+            'left[0].final_exit': 1,
+            'left[0].top_exit': 1,
+            'left_exit': 1,
+            'right_enter': 1,
+            'subs_enter': 1,
+            'subs[0].top_enter': 1,
+            'subs[0].start_enter': 1,
+            'subs[1].top_enter': 1,
+            'subs[1].start_enter': 1,
+        }
 
-            #'left[0].left_exit': 1,
-            #'left[0].right_enter': 1,
-        #}
+    def test_event_A_captured_by_right_submachines(self):
+        self.eb.dispatch(A())
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'left_enter': 1,
+            'left[0].top_enter': 1,
+            'left[0].start_enter': 1,
+            'left[0].start_exit': 1,
+            'left[0].right_enter': 1,
+            'left[0].right_exit': 1,
+            'left[0].final_enter': 1,
+            'left[0].final_exit': 1,
+            'left[0].top_exit': 1,
+            'left_exit': 1,
+            'right_enter': 1,
+            'subs_enter': 1,
+            'subs[0].top_enter': 1,
+            'subs[0].start_enter': 1,
+            'subs[1].top_enter': 1,
+            'subs[1].start_enter': 1,
 
-    #def test_terminate_left_submachine(self):
-        #self.eb.dispatch(TERMINATE())
-        #assert self.hsm.data._log == {
-            #'top_enter': 1,
-            #'left_enter': 1,
-            #'left[0].top_enter': 1,
-            #'left[0].left_enter': 1,
-            #'left[0].left_exit': 1,
-            #'left[0].right_enter': 1,
+            'subs[0].start_exit': 1,
+            'subs[0].right_enter': 1,
+            'subs[1].start_exit': 1,
+            'subs[1].right_enter': 1,
+        }
 
-            #'left[0].right_exit': 1,
-            #'left[0].final_enter': 1,
-        #}
+    def test_event_A_captured_by_right_submachines_again(self):
+        self.eb.dispatch(A())
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'left_enter': 1,
+            'left[0].top_enter': 1,
+            'left[0].start_enter': 1,
+            'left[0].start_exit': 1,
+            'left[0].right_enter': 1,
+            'left[0].right_exit': 1,
+            'left[0].final_enter': 1,
+            'left[0].final_exit': 1,
+            'left[0].top_exit': 1,
+            'left_exit': 1,
+            'right_enter': 1,
+            'subs_enter': 1,
+            'subs[0].top_enter': 1,
+            'subs[1].top_enter': 1,
+            'subs[0].start_exit': 1,
+            'subs[0].right_enter': 1,
+            'subs[1].start_exit': 1,
+            'subs[1].right_enter': 1,
 
-    #def test_event_A_transitions_to_right(self):
-        #self.eb.dispatch(A())
-        #assert self.hsm.data._log == {
-            #'top_enter': 1,
-            #'left_enter': 1,
-            #'left[0].top_enter': 1,
-            #'left[0].left_enter': 1,
-            #'left[0].left_exit': 1,
-            #'left[0].right_enter': 1,
-            #'left[0].right_exit': 1,
-            #'left[0].final_enter': 1,
+            'subs[0].right_exit': 1,
+            'subs[0].start_enter': 2,
+            'subs[1].right_exit': 1,
+            'subs[1].start_enter': 2,
+        }
 
-            #'left[0].final_exit': 1,
-            #'left[0].top_exit': 1,
-            #'left_exit': 1,
-            #'right_enter': 1,
-            #'subs_enter': 1,
-            #'subs[0].top_enter': 1,
-            #'subs[0].left_enter': 1,
-            #'subs[1].top_enter': 1,
-            #'subs[1].left_enter': 1,
-        #}
+    def test_terminate_right_submachine(self):
+        self.eb.dispatch(TERMINATE())
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'left_enter': 1,
+            'left[0].top_enter': 1,
+            'left[0].start_enter': 1,
+            'left[0].start_exit': 1,
+            'left[0].right_enter': 1,
+            'left[0].right_exit': 1,
+            'left[0].final_enter': 1,
+            'left[0].final_exit': 1,
+            'left[0].top_exit': 1,
+            'left_exit': 1,
+            'right_enter': 1,
+            'subs_enter': 1,
+            'subs[0].top_enter': 1,
+            'subs[1].top_enter': 1,
+            'subs[0].right_enter': 1,
+            'subs[1].right_enter': 1,
+            'subs[0].right_exit': 1,
+            'subs[0].start_enter': 2,
+            'subs[1].right_exit': 1,
+            'subs[1].start_enter': 2,
 
-    #def test_event_A_captured_by_right_submachines(self):
-        #self.eb.dispatch(A())
-        #assert self.hsm.data._log == {
-            #'top_enter': 1,
-            #'left_enter': 1,
-            #'left[0].top_enter': 1,
-            #'left[0].left_enter': 1,
-            #'left[0].left_exit': 1,
-            #'left[0].right_enter': 1,
-            #'left[0].right_exit': 1,
-            #'left[0].final_enter': 1,
-            #'left[0].final_exit': 1,
-            #'left[0].top_exit': 1,
-            #'left_exit': 1,
-            #'right_enter': 1,
-            #'subs_enter': 1,
-            #'subs[0].top_enter': 1,
-            #'subs[0].left_enter': 1,
-            #'subs[1].top_enter': 1,
-            #'subs[1].left_enter': 1,
+            'subs[0].start_exit': 2,
+            'subs[0].final_enter': 1,
+            'subs[1].start_exit': 2,
+            'subs[1].final_enter': 1,
+        }
 
-            #'subs[0].left_exit': 1,
-            #'subs[0].right_enter': 1,
-            #'subs[1].left_exit': 1,
-            #'subs[1].right_enter': 1,
-        #}
-        #self.eb.dispatch(A())
-        #assert self.hsm.data._log == {
-            #'top_enter': 1,
-            #'left_enter': 1,
-            #'left[0].top_enter': 1,
-            #'left[0].left_enter': 1,
-            #'left[0].left_exit': 1,
-            #'left[0].right_enter': 1,
-            #'left[0].right_exit': 1,
-            #'left[0].final_enter': 1,
-            #'left[0].final_exit': 1,
-            #'left[0].top_exit': 1,
-            #'left_exit': 1,
-            #'right_enter': 1,
-            #'subs_enter': 1,
-            #'subs[0].top_enter': 1,
-            #'subs[1].top_enter': 1,
-            #'subs[0].left_exit': 1,
-            #'subs[0].right_enter': 1,
-            #'subs[1].left_exit': 1,
-            #'subs[1].right_enter': 1,
+    def test_event_A_transitions_to_dumb(self):
+        self.eb.dispatch(A())
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'left_enter': 1,
+            'left[0].top_enter': 1,
+            'left[0].start_enter': 1,
+            'left[0].start_exit': 1,
+            'left[0].right_enter': 1,
+            'left[0].right_exit': 1,
+            'left[0].final_enter': 1,
+            'left[0].final_exit': 1,
+            'left[0].top_exit': 1,
+            'left_exit': 1,
+            'right_enter': 1,
+            'subs_enter': 1,
+            'subs[0].top_enter': 1,
+            'subs[1].top_enter': 1,
+            'subs[0].right_enter': 1,
+            'subs[1].right_enter': 1,
+            'subs[0].right_exit': 1,
+            'subs[0].start_enter': 2,
+            'subs[1].right_exit': 1,
+            'subs[1].start_enter': 2,
+            'subs[0].start_exit': 2,
+            'subs[0].final_enter': 1,
+            'subs[1].start_exit': 2,
+            'subs[1].final_enter': 1,
 
-            #'subs[0].right_exit': 1,
-            #'subs[0].left_enter': 2,
-            #'subs[1].right_exit': 1,
-            #'subs[1].left_enter': 2,
-        #}
+            'subs[0].final_exit': 1,
+            'subs[0].top_exit': 1,
+            'subs[1].final_exit': 1,
+            'subs[1].top_exit': 1,
+            'subs_exit': 1,
+            'dumb_enter': 1,
+        }
 
-    #def test_terminate_right_submachine(self):
-        #self.eb.dispatch(TERMINATE())
-        #assert self.hsm.data._log == {
-            #'top_enter': 1,
-            #'left_enter': 1,
-            #'left[0].top_enter': 1,
-            #'left[0].left_enter': 1,
-            #'left[0].left_exit': 1,
-            #'left[0].right_enter': 1,
-            #'left[0].right_exit': 1,
-            #'left[0].final_enter': 1,
-            #'left[0].final_exit': 1,
-            #'left[0].top_exit': 1,
-            #'left_exit': 1,
-            #'right_enter': 1,
-            #'subs_enter': 1,
-            #'subs[0].top_enter': 1,
-            #'subs[1].top_enter': 1,
-            #'subs[0].right_enter': 1,
-            #'subs[1].right_enter': 1,
-            #'subs[0].right_exit': 1,
-            #'subs[0].left_enter': 2,
-            #'subs[1].right_exit': 1,
-            #'subs[1].left_enter': 2,
+    def test_event_A_transitions_to_left_again(self):
+        self.eb.dispatch(A())
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'left[0].start_exit': 1,
+            'left[0].right_enter': 1,
+            'left[0].right_exit': 1,
+            'left[0].final_enter': 1,
+            'left[0].final_exit': 1,
+            'left[0].top_exit': 1,
+            'left_exit': 1,
+            'right_enter': 1,
+            'subs_enter': 1,
+            'subs[0].top_enter': 1,
+            'subs[1].top_enter': 1,
+            'subs[0].right_enter': 1,
+            'subs[1].right_enter': 1,
+            'subs[0].right_exit': 1,
+            'subs[0].start_enter': 2,
+            'subs[1].right_exit': 1,
+            'subs[1].start_enter': 2,
+            'subs[0].start_exit': 2,
+            'subs[0].final_enter': 1,
+            'subs[1].start_exit': 2,
+            'subs[1].final_enter': 1,
+            'subs[0].final_exit': 1,
+            'subs[0].top_exit': 1,
+            'subs[1].final_exit': 1,
+            'subs[1].top_exit': 1,
+            'subs_exit': 1,
+            'dumb_enter': 1,
 
-            #'subs[0].left_exit': 2,
-            #'subs[1].final_enter': 1,
-            #'subs[1].left_exit': 2,
-            #'subs[1].final_enter': 1,
-        #}
-
-    #def test_event_A_transitions_to_dumb(self):
-        #self.eb.dispatch(A())
-        #assert self.hsm.data._log == {
-            #'top_enter': 1,
-            #'left_enter': 1,
-            #'left[0].top_enter': 1,
-            #'left[0].left_enter': 1,
-            #'left[0].left_exit': 1,
-            #'left[0].right_enter': 1,
-            #'left[0].right_exit': 1,
-            #'left[0].final_enter': 1,
-            #'left[0].final_exit': 1,
-            #'left[0].top_exit': 1,
-            #'left_exit': 1,
-            #'right_enter': 1,
-            #'subs_enter': 1,
-            #'subs[0].top_enter': 1,
-            #'subs[1].top_enter': 1,
-            #'subs[0].right_enter': 1,
-            #'subs[1].right_enter': 1,
-            #'subs[0].right_exit': 1,
-            #'subs[0].left_enter': 2,
-            #'subs[1].right_exit': 1,
-            #'subs[1].left_enter': 2,
-            #'subs[0].left_exit': 2,
-            #'subs[1].final_enter': 1,
-            #'subs[1].left_exit': 2,
-            #'subs[1].final_enter': 1,
-
-            #'subs[0].final_exit': 1,
-            #'subs[0].top_exit': 1,
-            #'subs[1].final_exit': 1,
-            #'subs[1].top_exit': 1,
-            #'subs_exit': 1,
-            #'dumb_enter': 1,
-        #}
-
-    #def test_event_A_transitions_to_left_again(self):
-        #self.eb.dispatch(A())
-        #assert self.hsm.data._log == {
-            #'top_enter': 1,
-            #'left[0].left_exit': 1,
-            #'left[0].right_enter': 1,
-            #'left[0].right_exit': 1,
-            #'left[0].final_enter': 1,
-            #'left[0].final_exit': 1,
-            #'left[0].top_exit': 1,
-            #'left_exit': 1,
-            #'right_enter': 1,
-            #'subs_enter': 1,
-            #'subs[0].top_enter': 1,
-            #'subs[1].top_enter': 1,
-            #'subs[0].right_enter': 1,
-            #'subs[1].right_enter': 1,
-            #'subs[0].right_exit': 1,
-            #'subs[0].left_enter': 2,
-            #'subs[1].right_exit': 1,
-            #'subs[1].left_enter': 2,
-            #'subs[0].left_exit': 2,
-            #'subs[1].final_enter': 1,
-            #'subs[1].left_exit': 2,
-            #'subs[1].final_enter': 1,
-            #'subs[0].final_exit': 1,
-            #'subs[0].top_exit': 1,
-            #'subs[1].final_exit': 1,
-            #'subs[1].top_exit': 1,
-            #'subs_exit': 1,
-            #'dumb_enter': 1,
-
-            #'dumb_exit': 1,
-            #'right_exit': 1,
-            #'left_enter': 2,
-            #'left[0].top_enter': 2,
-            #'left[0].left_enter': 2,
-        #}
+            'dumb_exit': 1,
+            'right_exit': 1,
+            'left_enter': 2,
+            'left[0].top_enter': 2,
+            'left[0].start_enter': 2,
+        }

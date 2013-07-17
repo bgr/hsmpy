@@ -509,55 +509,233 @@ class Test_miro_machine(object):
         self.hsm.start(self.eb)
         assert curr_state(self.hsm) == 's211'
         assert self.hsm.data.foo is False
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's2_enter': 1,
+            's21_enter': 1,
+            's211_enter': 1,
+        }
 
     def test_step_2_in_s11_after_G(self):
         self.eb.dispatch(G())
         assert curr_state(self.hsm) == 's11'
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's2_enter': 1,
+            's21_enter': 1,
+            's211_enter': 1,
+
+            's211_exit': 1,
+            's21_exit': 1,
+            's2_exit': 1,
+            's1_enter': 1,
+            's11_enter': 1,
+        }
 
     def test_step_3_dont_change_foo_after_I(self):
         assert self.hsm.data.foo is False
         self.eb.dispatch(I())
         assert self.hsm.data.foo is False
         assert curr_state(self.hsm) == 's11'
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's2_enter': 1,
+            's21_enter': 1,
+            's211_enter': 1,
+            's211_exit': 1,
+            's21_exit': 1,
+            's2_exit': 1,
+            's1_enter': 1,
+            's11_enter': 1,
+            # no change
+        }
 
     def test_step_4_in_s11_after_A(self):
         self.eb.dispatch(A())
         assert curr_state(self.hsm) == 's11'
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's2_enter': 1,
+            's21_enter': 1,
+            's211_enter': 1,
+            's211_exit': 1,
+            's21_exit': 1,
+            's2_exit': 1,
+
+            's11_exit': 1,
+            's1_exit': 1,
+            's1_enter': 2,
+            's11_enter': 2,
+        }
+
 
     def test_step_5_in_s11_after_D(self):
         assert self.hsm.data.foo is False
         self.eb.dispatch(D())
         assert self.hsm.data.foo is True
         assert curr_state(self.hsm) == 's11'
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's2_enter': 1,
+            's21_enter': 1,
+            's211_enter': 1,
+            's211_exit': 1,
+            's21_exit': 1,
+            's2_exit': 1,
+
+            's1_exit': 2,
+            's1_enter': 3,
+            's11_exit': 2,
+            's11_enter': 3,
+        }
 
     def test_step_6_in_s11_after_D(self):
         assert self.hsm.data.foo is True
         self.eb.dispatch(D())
         assert self.hsm.data.foo is False
         assert curr_state(self.hsm) == 's11'
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's2_enter': 1,
+            's21_enter': 1,
+            's211_enter': 1,
+            's211_exit': 1,
+            's21_exit': 1,
+            's2_exit': 1,
+            's1_exit': 2,
+            's1_enter': 3,
+
+            's11_exit': 3,
+            's11_enter': 4,
+        }
 
     def test_step_7_in_s211_after_C(self):
         self.eb.dispatch(C())
         assert curr_state(self.hsm) == 's211'
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's211_exit': 1,
+            's21_exit': 1,
+            's2_exit': 1,
+            's1_enter': 3,
+            's11_enter': 4,
+
+            's11_exit': 4,
+            's1_exit': 3,
+            's2_enter': 2,
+            's21_enter': 2,
+            's211_enter': 2,
+        }
 
     def test_step_8_in_s11_after_E(self):
         self.eb.dispatch(E())
         assert curr_state(self.hsm) == 's11'
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's11_exit': 4,
+            's1_exit': 3,
+            's2_enter': 2,
+            's21_enter': 2,
+            's211_enter': 2,
+
+            's211_exit': 2,
+            's21_exit': 2,
+            's2_exit': 2,
+            's1_enter': 4,
+            's11_enter': 5,
+        }
 
     def test_step_9_in_s11_after_E(self):
         self.eb.dispatch(E())
         assert curr_state(self.hsm) == 's11'
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's2_enter': 2,
+            's21_enter': 2,
+            's211_enter': 2,
+            's211_exit': 2,
+            's21_exit': 2,
+            's2_exit': 2,
+
+            's11_exit': 5,
+            's1_exit': 4,
+            's1_enter': 5,
+            's11_enter': 6,
+        }
 
     def test_step_10_in_s211_after_G(self):
         self.eb.dispatch(G())
         assert curr_state(self.hsm) == 's211'
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's2_enter': 2,
+            's21_enter': 2,
+            's211_enter': 2,
+            's211_exit': 2,
+            's21_exit': 2,
+            's2_exit': 2,
+            's1_enter': 5,
+            's11_enter': 6,
+
+            's11_exit': 6,
+            's1_exit': 5,
+            's2_enter': 3,
+            's21_enter': 3,
+            's211_enter': 3,
+        }
 
     def test_step_11_s2_responds_to_I(self):
         assert self.hsm.data.foo is False
         self.eb.dispatch(I())
         assert self.hsm.data.foo is True
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's2_enter': 2,
+            's21_enter': 2,
+            's211_enter': 2,
+            's211_exit': 2,
+            's21_exit': 2,
+            's2_exit': 2,
+            's1_enter': 5,
+            's11_enter': 6,
+            's11_exit': 6,
+            's1_exit': 5,
+            's2_enter': 3,
+            's21_enter': 3,
+            's211_enter': 3,
+            # no change
+        }
 
     def test_step_12_s_responds_to_I(self):
         assert self.hsm.data.foo is True
         self.eb.dispatch(I())
         assert self.hsm.data.foo is False
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            's_enter': 1,
+            's2_enter': 2,
+            's21_enter': 2,
+            's211_enter': 2,
+            's211_exit': 2,
+            's21_exit': 2,
+            's2_exit': 2,
+            's1_enter': 5,
+            's11_enter': 6,
+            's11_exit': 6,
+            's1_exit': 5,
+            's2_enter': 3,
+            's21_enter': 3,
+            's211_enter': 3,
+            # no change
+        }

@@ -111,7 +111,7 @@ class Test_get_response_considering_guards(object):
                                    self.hsm.trans, mock_hsm)
 
         if expected_responding_state is None:
-            assert responses == [([], [], [])]
+            assert responses == []
         else:
             assert len(responses) == 1  # no orthogonal regions in this HSM
             _, resp_state, tran = responses[0]
@@ -173,6 +173,10 @@ miro_exits_and_entries = [
     ('s211', B, _, _, 's211',
      ['s211-exit'],
      ['s21-B', 's211-entry']),
+
+    ('s211', E, _, _, 's11',
+     ['s211-exit', 's21-exit', 's2-exit'],
+     ['s-E', 's1-entry', 's11-entry']),
 
     ('s21', H, _, _, None,
      [],
