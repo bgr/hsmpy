@@ -20,7 +20,7 @@ def hsmlog(instance, hsm, action):
 
 
 class LoggingState(State):
-    def __init__(self, log_id=None, states=None):
+    def __init__(self, states=None, log_id=None):
         super(LoggingState, self).__init__(states)
         self._log_id = log_id
 
@@ -217,38 +217,36 @@ def make_submachines_machine(use_logging):
     """
     Cls = LoggingState if use_logging else State
     submachines = []
-    for i in range(3):  # make a couple of identical machines
-        sub_states = {
-            'top': Cls({
-                'start': Cls(),
-                'right': Cls(),
-                'final': Cls(),
-            })
+    sub_states = {
+        'top': Cls({
+            'start': Cls(),
+            'right': Cls(),
+            'final': Cls(),
+        })
+    }
+    sub_trans = {
+        'top': {
+            Initial: T('start'),
+            TERMINATE: Local('final'),
+        },
+        'start': {
+            A: T('right'),
+        },
+        'right': {
+            A: T('start'),
         }
-        sub_trans = {
-            'top': {
-                Initial: T('start'),
-                TERMINATE: Local('final'),
-            },
-            'left': {
-                A: T('right'),
-            },
-            'right': {
-                A: Local('start'),  # should fail validation
-            }
-        }
-        submachines += [(sub_states, sub_trans)]
+    }
 
     states = {
         'top': Cls({
             'left': Cls([
-                submachines[0],
+                (sub_states, sub_trans),
             ]),
             'right': Cls({
                 'dumb': Cls(),
                 'subs': Cls([
-                    submachines[1],
-                    submachines[2],
+                    (sub_states, sub_trans),
+                    (sub_states, sub_trans),
                 ]),
             }),
         })

@@ -1,7 +1,7 @@
 import pytest
-from hsmpy import HSM, Event, Initial
-from hsmpy.statemachine import (_get_transition_sequence, _get_response,
-                                _get_state_by_name)
+from hsmpy import State, HSM, Event, Initial
+from hsmpy.statemachine import (_get_merged_sequences, _get_responses,
+                                _get_state_by_sig)
 from predefined_machines import make_miro_machine, make_nested_machine
 from predefined_machines import (A, B, C, D, E, F, G, H, I, TERMINATE, AB_ex,
                                  AC_ex, BC_ex, AB_loc, AC_loc, BC_loc, BA_ex,
@@ -43,23 +43,26 @@ responding_reguardless = [
 class Test_get_response_guards_irrelevant(object):
 
     def setup_class(self):
-        self.states, self.trans = make_miro_machine()
-        self.hsm = HSM(self.states, self.trans)
+        states, trans = make_miro_machine(use_logging=True)
+        self.hsm = HSM(states, trans)
 
-    @pytest.mark.parametrize(('from_state', 'on_event',
+    @pytest.mark.parametrize(('from_state', 'Event',
                               'expected_responding_state',
                               'expected_transition_target'),
                              responding_reguardless)
-    def test_run(self, from_state, on_event, expected_responding_state,
+    def test_run(self, from_state, Event, expected_responding_state,
                  expected_transition_target):
         mock_hsm = MockHSM()
-        from_state = _get_state_by_name(from_state, self.hsm.flattened)
+        from_state = _get_state_by_sig((from_state,), self.hsm.flattened)
+        state_set = set([from_state])
 
-        resp_state, tran = _get_response(from_state, on_event(),
-                                         self.trans, mock_hsm)
+        responses = _get_responses(state_set, Event(),
+                                   self.hsm.trans, mock_hsm)
+        assert len(responses) == 1  # since there are no submachines
 
+        _, resp_state, tran = responses[0]
         assert resp_state.name == expected_responding_state
-        assert tran.target == expected_transition_target
+        assert State.sig_to_name(tran.target) == expected_transition_target
 
 
 
@@ -90,28 +93,36 @@ responding_considering_guards = [
 class Test_get_response_considering_guards(object):
 
     def setup_class(self):
-        self.states, self.trans = make_miro_machine()
-        self.hsm = HSM(self.states, self.trans)
+        states, trans = make_miro_machine(use_logging=True)
+        self.hsm = HSM(states, trans)
 
-    @pytest.mark.parametrize(('from_state', 'on_event', 'foo_before',
+    @pytest.mark.parametrize(('from_state', 'Event', 'foo_before',
                               'foo_expected', 'expected_responding_state',
                               'expected_transition_target'),
                              responding_considering_guards)
-    def test_run(self, from_state, on_event, foo_before, foo_expected,
+    def test_run(self, from_state, Event, foo_before, foo_expected,
                  expected_responding_state, expected_transition_target):
         mock_hsm = MockHSM()
         mock_hsm.data.foo = foo_before
-        from_state = _get_state_by_name(from_state, self.hsm.flattened)
+        from_state = _get_state_by_sig((from_state,), self.hsm.flattened)
+        state_set = set([from_state])
 
-        resp_state, tran = _get_response(from_state, on_event(),
-                                         self.trans, mock_hsm)
+        responses = _get_responses(state_set, Event(),
+                                   self.hsm.trans, mock_hsm)
 
         if expected_responding_state is None:
-            assert resp_state is None
-            assert tran is None  # if no state responds tran must be None
+            assert responses == [([], [], [])]
         else:
+            assert len(responses) == 1  # no orthogonal regions in this HSM
+            _, resp_state, tran = responses[0]
             assert resp_state.name == expected_responding_state
-            assert tran.target == expected_transition_target
+
+            if expected_transition_target is not None:
+                assert State.sig_to_name(
+                    tran.target) == expected_transition_target
+            else:
+                assert tran.target is None
+
             tran.action(None, mock_hsm)  # this call might change 'foo' value
                                          # event is not relevant
 
@@ -311,9 +322,9 @@ nested_exits_and_entries = [
 
 
 def prepend_machine_params(make_machine_func, list_of_tuples):
-    states, trans = make_machine_func()
-    hsm = HSM(states, trans)
-    return [(states, trans, hsm) + tup for tup in list_of_tuples]
+    states, trans = make_machine_func(use_logging=True)
+    hsm = HSM(states, trans, skip_validation=True)
+    return [(hsm.trans, hsm) + tup for tup in list_of_tuples]
 
 miro_params = prepend_machine_params(make_miro_machine,
                                      miro_exits_and_entries)
@@ -326,20 +337,21 @@ all_params = miro_params + nested_params
 
 class Test_transition_sequences(object):
 
-    @pytest.mark.parametrize(('states', 'trans', 'hsm',
-                              'from_state', 'event_type', 'foo_before',
+    @pytest.mark.parametrize(('trans', 'hsm',
+                              'from_state', 'Event', 'foo_before',
                               'foo_expected', 'expected_resulting_state',
                               'expected_exits', 'expected_entries'),
                              all_params)
-    def test_run(self, states, trans, hsm, from_state, event_type, foo_before,
+    def test_run(self, trans, hsm, from_state, Event, foo_before,
                  foo_expected, expected_resulting_state, expected_exits,
                  expected_entries):
         mock_hsm = MockHSM()
         mock_hsm.data.foo = foo_before
-        from_state = _get_state_by_name(from_state, hsm.flattened)
+        from_state = _get_state_by_sig((from_state,), hsm.flattened)
+        state_set = set([from_state])
 
-        exits, entries, res_state = _get_transition_sequence(
-            from_state, event_type(), hsm.flattened, trans, mock_hsm)
+        exits, entries, res_states = _get_merged_sequences(
+            state_set, Event(), hsm.flattened, trans, mock_hsm)
 
         exits_names = [str(act) for act in exits]
         entries_names = [str(act) for act in entries]
@@ -348,9 +360,10 @@ class Test_transition_sequences(object):
         assert entries_names == expected_entries
 
         if expected_resulting_state is None:
-            assert res_state is None
+            assert res_states == []
         else:
-            assert res_state.name == expected_resulting_state
+            assert len(res_states) == 1  # no orthogonal regions in this HSM
+            assert res_states[0].name == expected_resulting_state
 
         # perform actions to update 'foo' value
         [exit(None, mock_hsm) for exit in exits]

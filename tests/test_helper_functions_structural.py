@@ -1,11 +1,12 @@
+import pytest
 from hsmpy.statemachine import (_get_path,
                                 _get_path_from_root,
                                 _get_common_parent,
                                 _get_events,
-                                _get_state_by_name,
+                                _get_state_by_sig,
                                 _get_incoming_transitions,
                                 _find_duplicates,
-                                _find_duplicate_names,
+                                _find_duplicate_sigs,
                                 _find_nonexistent_transition_sources,
                                 _find_nonexistent_transition_targets,
                                 _find_missing_initial_transitions,
@@ -91,15 +92,15 @@ class Test_get_path(object):
 
         flattened = HSM(states, {}, skip_validation=True).flattened
 
-        left_B = _get_state_by_name(('left_B',), flattened)
-        deep = _get_state_by_name(('deep',), flattened)
+        left_B = _get_state_by_sig(('left_B',), flattened)
+        deep = _get_state_by_sig(('deep',), flattened)
 
         exits, parent, entries = _get_path(deep, left_B)
-        exits = [st.name[0] for st in exits]
-        entries = [st.name[0] for st in entries]
+        exits = [st.name for st in exits]
+        entries = [st.name for st in entries]
 
         assert exits == ['deep', 'right_A', 'right']
-        assert parent.name[0] == 'root'
+        assert parent.name == 'root'
         assert entries == ['left', 'left_B']
 
 
@@ -184,8 +185,8 @@ class Test_get_path_from_root(object):
         }
 
         flattened = HSM(states, {}, skip_validation=True).flattened
-        deep = _get_state_by_name(('deep',), flattened)
-        state_names = [state.name[0] for state in _get_path_from_root(deep)]
+        deep = _get_state_by_sig(('deep',), flattened)
+        state_names = [state.name for state in _get_path_from_root(deep)]
         assert state_names == ['root', 'right', 'right_A', 'deep']
 
 
@@ -278,14 +279,14 @@ class Test_get_common_parent(object):
 
         flattened = HSM(states, {}, skip_validation=True).flattened
 
-        left_A = _get_state_by_name(('left_A',), flattened)
-        left_B = _get_state_by_name(('left_B',), flattened)
-        right_A_1 = _get_state_by_name(('right_A_1',), flattened)
-        right_B = _get_state_by_name(('right_B',), flattened)
+        left_A = _get_state_by_sig(('left_A',), flattened)
+        left_B = _get_state_by_sig(('left_B',), flattened)
+        right_A_1 = _get_state_by_sig(('right_A_1',), flattened)
+        right_B = _get_state_by_sig(('right_B',), flattened)
 
-        assert _get_common_parent(left_A, left_B).name[0] == 'left'
-        assert _get_common_parent(left_A, right_A_1).name[0] == 'root'
-        assert _get_common_parent(right_A_1, right_B).name[0] == 'right'
+        assert _get_common_parent(left_A, left_B).name == 'left'
+        assert _get_common_parent(left_A, right_A_1).name == 'root'
+        assert _get_common_parent(right_A_1, right_B).name == 'right'
 
 
 
@@ -329,7 +330,7 @@ class Test_find_duplicates(object):
         }
         hsm = HSM(states, {}, skip_validation=True)
         # extract name from tuple
-        dups = [name[0] for name in _find_duplicate_names(hsm.flattened)]
+        dups = [name[-1] for name in _find_duplicate_sigs(hsm.flattened)]
         assert sorted(dups) == sorted(['left', 'right', 'left_B'])
 
 
@@ -348,11 +349,15 @@ class Test_structural_analysis(object):
                 'middle': State({  # bad initial transition (outside)
                     'mid_A': State(),       # both unreachable
                 }),
-                'ortho': State(  # unreachable
-                    [
-                        ({ 'sub1': State(), }, {} ),  # TODO: implement logic
-                        ({ 'sub2': State(), }, {} ),  # for unreachable in orth
-                    ]),
+                'ortho_unreachable': State([  # unreachable
+                    ({ 'subunr1': State(), }, {} ),  # unreachable since
+                    ({ 'subunr2': State(), }, {} ),  # parent is unreachable
+                ]),
+                'ortho': State([  # reachable (transition points to it)
+                    ({ 'sub1': State(), }, {} ),  # reachable automaticlly
+                    ({ 'sub2': State({ 'unr': State() }), }, {} ),
+                                        # ^ unreachable (no tran to it)
+                ]),
                 'right': State({  # bad initial transition (loop)
                     'right_A': State(),  # unreachable (incoming also unreach.)
                     'right_B': State(),  # unreachable; only has self loop
@@ -363,6 +368,7 @@ class Test_structural_analysis(object):
         trans = {
             'top': {
                 Initial: Local('left_B'),  # initial trans cannot be local
+                C: Local('ortho')
             },
             'left': {  # no initial transition
                 A: T('right'),
@@ -405,24 +411,24 @@ class Test_structural_analysis(object):
         }
         self.hsm = HSM(states, trans, skip_validation=True)
 
-    def test_get_state_by_name(self):
-        f = lambda nice: _get_state_by_name((nice,), self.hsm.flattened)
-        assert f('top').name == ('top',)
-        assert f('left').name == ('left',)
-        assert f('mid_A').name == ('mid_A',)
-        assert f('right_B').name == ('right_B',)
+    def test_get_state_by_sig(self):
+        f = lambda nice: _get_state_by_sig((nice,), self.hsm.flattened)
+        assert f('top').name == 'top'
+        assert f('left').name == 'left'
+        assert f('mid_A').name == 'mid_A'
+        assert f('right_B').name == 'right_B'
 
-    def test_get_state_by_name_in_orthogonal(self):
-        f = lambda tup: _get_state_by_name(tup, self.hsm.flattened)
-        assert f(('ortho',)).name == ('ortho',)
-        assert f(('ortho', 0, 'sub1')).name == ('ortho', 0, 'sub1')
-        assert f(('ortho', 1, 'sub2')).name == ('ortho', 1, 'sub2')
+    def test_get_state_by_sig_in_orthogonal(self):
+        f = lambda tup: _get_state_by_sig(tup, self.hsm.flattened)
+        assert f(('ortho',)).sig == ('ortho',)
+        assert f(('ortho', 0, 'sub1')).sig == ('ortho', 0, 'sub1')
+        assert f(('ortho', 1, 'sub2')).sig == ('ortho', 1, 'sub2')
 
 
     def test_get_incoming_trans(self):
         # exclude Transition objects from result tuples for cleaner checks
         def f(name, include_loops):
-            res = [(src[0], evt) for src, evt, _tran
+            res = [(src[-1], evt) for src, evt, _tran
                    in _get_incoming_transitions((name,), self.hsm.trans,
                                                 include_loops)]
             return sorted(res)
@@ -462,35 +468,36 @@ class Test_structural_analysis(object):
 
     def test_find_missing_initial_transitions(self):
         func = _find_missing_initial_transitions
-        names = [st.name[0] for st in func(self.hsm.flattened, self.hsm.trans)]
-        assert sorted(names) == sorted(['left', 'bad'])
+        names = [s.name for s in func(self.hsm.flattened, self.hsm.trans)]
+        assert sorted(names) == sorted(['left', 'bad', 'ortho[1].sub2'])
 
 
     def test_find_invalid_initial_transitions(self):
         func = _find_invalid_initial_transitions
-        names = [st.name[0] for st in func(self.hsm.flattened, self.hsm.trans)]
+        names = [s.name for s in func(self.hsm.flattened, self.hsm.trans)]
         assert sorted(names) == sorted(['top', 'middle', 'right'])
 
 
     def test_find_invalid_local_transitions(self):
-        res_tuples = [(src[0], evt, tran.target[0]) for src, evt, tran
+        res_tuples = [(src[-1], evt, tran[-1]) for src, evt, tran
                       in _find_invalid_local_transitions(self.hsm.flattened,
                                                          self.hsm.trans)]
         assert sorted(res_tuples) == sorted([
-            ('left_B', A, 'left_A'),
-            ('right', A, 'left_A'),
-            ('right', B, 'right'),
+            ('left_B', 'A', 'left_A'),
+            ('right', 'A', 'left_A'),
+            ('right', 'B', 'right'),
         ])
 
 
     def test_find_unreachable_states(self):
-        names = [st.name[-1]  # first element of tuple
+        names = [st.name  # first element of tuple
                  for st in _find_unreachable_states(self.hsm.root,
                                                     self.hsm.flattened,
                                                     self.hsm.trans)]
-        assert sorted(names) == sorted(['middle', 'mid_A', 'right_A',
-                                        'right_B', 'bad', 'bad1', 'ortho',
-                                        'sub1', 'sub2'])
+        expected = ['middle', 'mid_A', 'right_A', 'right_B', 'bad', 'bad1',
+                    'ortho_unreachable', 'ortho_unreachable[0].subunr1',
+                    'ortho_unreachable[1].subunr2', 'ortho[1].unr']
+        assert sorted(names) == sorted(expected)
 
 
 class Test_get_events(object):
@@ -560,6 +567,11 @@ class Test_flatten(object):
     def test_single_empty(self):
         assert _flatten([]) == []
 
+    def test_with_list(self):
+        a = [1, 2, [3, 4, [5, 6], 7, [8, 9]], 10, [11, [12, 13]], 14]
+        exp = list(range(1, 15))
+        assert sorted(_flatten(a)) == sorted(exp)
+
     def test_nested_empty(self):
         states = [
             composite('a', [
@@ -599,7 +611,7 @@ class Test_flatten(object):
         states, trans = make_miro_machine(use_logging=False)
 
         hsm = HSM(states, trans)
-        names = [st.name[-1] for st in hsm.flattened]
+        names = [st.name for st in hsm.flattened]
         assert sorted(names) == sorted(['top', 'final', 's', 's1', 's11', 's2',
                                         's21', 's211'])
 
@@ -626,14 +638,14 @@ class Test_reformat(object):
         states = {
             'a': State(),
         }
-        expected_states = [ leaf(('a',)) ]
+        expected_states = [ leaf('a') ]
         assert _reformat(states, {}) == (expected_states, {})
 
     def test_reformat_states_shallow_with_prefix(self):
         states = {
             'a': State(),
         }
-        exp_states = [ leaf(('pfx', 1, 'a',)) ]
+        exp_states = [ leaf('pfx[1].a') ]
         assert _reformat(states, {}, prefix=('pfx', 1)) == (exp_states, {})
 
     def test_renamed_transition_sources_and_targets(self):
@@ -695,14 +707,14 @@ class Test_reformat(object):
                 ])
         }
         exp_states = [
-            orthogonal(('a',), [
+            orthogonal('a', [
 
-                composite(('a', 0, 'sub1'), [
-                    leaf(('a', 0, 'x')) ]),
+                composite('a[0].sub1', [
+                    leaf('a[0].x') ]),
 
-                composite(('a', 1, 'sub2'), [
-                    composite(('a', 1, 'y'),  [
-                        leaf(('a', 1, 'deep'))
+                composite('a[1].sub2', [
+                    composite('a[1].y',  [
+                        leaf('a[1].deep')
                     ]) ])
             ])
         ]
@@ -748,29 +760,29 @@ class Test_reformat(object):
             ])
         }
         exp_states = [
-            composite(('a',), [
-                composite(('a1',), [
-                    leaf(('a11',)),
+            composite('a', [
+                composite('a1', [
+                    leaf('a11'),
                 ]),
-                composite(('a2',), [
-                    leaf(('a12',)),
+                composite('a2', [
+                    leaf('a12'),
                 ]),
             ]),
-            orthogonal(('b',), [
-                composite(('b', 0, 'sub1'), [
-                    leaf(('b', 0, 'sub1a')),
-                    orthogonal(('b', 0, 'sub1_ortho'), [
-                        composite(('b', 0, 'sub1_ortho', 0, 'deep1'), [
-                            leaf(('b', 0, 'sub1_ortho', 0, 'deep2')) ]),
-                        composite(('b', 0, 'sub1_ortho', 1, 'deep1'), [
-                            leaf(('b', 0, 'sub1_ortho', 1, 'deep2')) ]),
+            orthogonal('b', [
+                composite('b[0].sub1', [
+                    leaf('b[0].sub1a'),
+                    orthogonal('b[0].sub1_ortho', [
+                        composite('b[0].sub1_ortho[0].deep1', [
+                            leaf('b[0].sub1_ortho[0].deep2') ]),
+                        composite('b[0].sub1_ortho[1].deep1', [
+                            leaf('b[0].sub1_ortho[1].deep2') ]),
                     ]),
 
                 ]),
-                composite(('b', 1, 'sub2'), [
-                    leaf(('b', 1, 'sub2a')),
-                    composite(('b', 1, 'sub2b'), [
-                        leaf(('b', 1, 'deep'))
+                composite('b[1].sub2', [
+                    leaf('b[1].sub2a'),
+                    composite('b[1].sub2b', [
+                        leaf('b[1].deep')
                     ]),
                 ]),
             ])
@@ -881,18 +893,18 @@ class Test_reformat(object):
     def test_reformat_miro_machine(self):
         states, _ = _reformat(*make_miro_machine(use_logging=False))
         expected_states = [
-            composite(('top',), [
-                composite(('s',), [
-                    composite(('s1',), [
-                        leaf(('s11',))
+            composite('top', [
+                composite('s', [
+                    composite('s1', [
+                        leaf('s11')
                     ]),
-                    composite(('s2',), [
-                        composite(('s21',), [
-                            leaf(('s211',))
+                    composite('s2', [
+                        composite('s21', [
+                            leaf('s211')
                         ])
                     ])
                 ]),
-                leaf(('final',))
+                leaf('final')
             ])
         ]
         assert states == expected_states
@@ -989,12 +1001,12 @@ class Test_State_equals(object):
     def test_children_list_different_order(self):
         s1 = State()
         s2 = State()
-        s1.states = [leaf(1), leaf(2), leaf(3)]
-        s2.states = [leaf(1), leaf(2), leaf(3)]
+        s1.states = [leaf('1'), leaf('2'), leaf('3')]
+        s2.states = [leaf('1'), leaf('2'), leaf('3')]
         assert s1 == s2
-        s2.states = [leaf(3), leaf(1), leaf(2)]
+        s2.states = [leaf('3'), leaf('1'), leaf('2')]
         assert s1 == s2
-        s2.states = [leaf(3), leaf(999), leaf(2)]
+        s2.states = [leaf('3'), leaf('999'), leaf('2')]
         assert not s1 == s2
 
     def test_children_list_nested(self):
@@ -1019,22 +1031,22 @@ class Test_State_equals(object):
         s1 = State()
         s2 = State()
         s1.states = [
-            composite('A', [leaf(1), leaf(2)]),
-            composite('B', [leaf(3), leaf(4)]),
+            composite('A', [leaf('1'), leaf('2')]),
+            composite('B', [leaf('3'), leaf('4')]),
         ]
         s2.states = [
-            composite('A', [leaf(2), leaf(1)]),
-            composite('B', [leaf(4), leaf(3)]),
-        ]
-        assert s1 == s2
-        s2.states = [
-            composite('B', [leaf(4), leaf(3)]),
-            composite('A', [leaf(2), leaf(1)]),
+            composite('A', [leaf('2'), leaf('1')]),
+            composite('B', [leaf('4'), leaf('3')]),
         ]
         assert s1 == s2
         s2.states = [
-            composite('B', [leaf(4), leaf(3)]),
-            composite('A', [leaf(999), leaf(1)]),
+            composite('B', [leaf('4'), leaf('3')]),
+            composite('A', [leaf('2'), leaf('1')]),
+        ]
+        assert s1 == s2
+        s2.states = [
+            composite('B', [leaf('4'), leaf('3')]),
+            composite('A', [leaf('999'), leaf('1')]),
         ]
         assert not s1 == s2
 
@@ -1070,3 +1082,75 @@ class Test_State_equals(object):
             'b': State()
         }
         assert s1 == s2
+
+
+class Test_state_sig_and_name(object):
+    @pytest.mark.parametrize(('sig', 'name'), [
+        ((), ''),
+        (('',), ''),
+        (('a',), 'a'),
+        (('Hello, world!',), 'Hello, world!'),
+        ((1,), '1'),
+        (('a', 0), 'a[0]'),
+        (('hello', 345), 'hello[345]'),
+        (('a', 2, 'sub'), 'a[2].sub'),
+        (('a', 2, 'sub', 3), 'a[2].sub[3]'),
+        (('A', 2, 'sub', 3, 'enough'), 'A[2].sub[3].enough'),
+    ])
+    def test_sig_to_name(self, sig, name):
+        assert State.sig_to_name(sig) == name
+
+    @pytest.mark.parametrize(('sig', 'name'), [
+        (('a',), 'a'),
+        (('Hello, world!',), 'Hello, world!'),
+        (('asd',), '  asd  '),
+        (('asd bb',), '  asd bb '),
+        (('1',), '1'),
+        (('a', 2, 'sub'), 'a[2].sub'),
+        (('a', 2, 'sub'), '   a   [ 2]  .   sub   '),
+        (('A', 2, 'sub', 3, 'sub   sub'), 'A [ 2 ] . sub [3 ] . sub   sub '),
+        (('A', 2, 'S  U B', 3, 'sub sub'), '  A[2].  S  U B [3].  sub sub  '),
+    ])
+    def test_name_to_sig(self, sig, name):
+        assert State.name_to_sig(name) == sig
+
+    @pytest.mark.parametrize(('name'), [
+        '',
+        ' ',
+        'a[0]',
+        'asd[3]',
+        'asd[3].',
+        'asd[3]. ',
+        'a[2].sub[3]',
+        'A[2].sub[3].subsub[4]',
+        '[0]',
+        '[0].sub',
+        'asd[',
+        'asd[].sub',
+        'asd[-1].sub',
+        '.',
+        '',
+        '   . ',
+        '[',
+        ']',
+        'asd[asd',
+        'asd]asd',
+        'a[[0].sub',
+        'a[0]].sub',
+        'a[[0]].sub',
+        'a[1 2].sub',
+        'a[1 asd[1].sub ].sub',
+        'asd.asdf',
+        'a.sd[3]',
+        'asd[3].',
+        'asd[3].asd.',
+        'asd[3].asd.asd',
+        'asd[3].asd.asd[0].asd',
+        'asd[3][4]',
+        'asd[3][4].',
+        'asd[3][4].asd',
+    ])
+    def test_name_to_sig_malformed(self, name):
+        with pytest.raises(ValueError):
+            res = State.name_to_sig(name)
+            print res

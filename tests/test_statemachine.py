@@ -50,13 +50,10 @@ class Test_simple_two_state_door_machine():
             'trans_closing': 0,
         }
 
-        self.closed = Closed()
-        self.opened = Opened()
-
         self.states = {
             'top': State({
-                'closed': self.closed,
-                'opened': self.opened,
+                'closed': Closed(),
+                'opened': Opened(),
             })
         }
 
@@ -82,21 +79,21 @@ class Test_simple_two_state_door_machine():
 
     def test_in_closed_state_after_starting(self):
         self.hsm.start(self.eb)
-        assert self.hsm.current_state_set == set([self.closed])
+        assert curr_state(self.hsm) == 'closed'
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['closed_enter'] == 1
         assert self.hsm.data.values().count(0) == 5
 
     def test_ignores_close_while_closed(self):
         self.eb.dispatch(CloseDoor())
-        assert self.hsm.current_state_set == set([self.closed])
+        assert curr_state(self.hsm) == 'closed'
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['closed_enter'] == 1
         assert self.hsm.data.values().count(0) == 5
 
     def test_transition_to_opened(self):
         self.eb.dispatch(OpenDoor())
-        assert self.hsm.current_state_set == set([self.opened])
+        assert curr_state(self.hsm) == 'opened'
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['closed_enter'] == 1
         assert self.hsm.data['closed_exit'] == 1  # changed
@@ -107,7 +104,7 @@ class Test_simple_two_state_door_machine():
 
     def test_ignores_open_while_opened(self):
         self.eb.dispatch(OpenDoor())
-        assert self.hsm.current_state_set == set([self.opened])
+        assert curr_state(self.hsm) == 'opened'
         assert self.hsm.data['closed_enter'] == 1
         assert self.hsm.data['closed_exit'] == 1
         assert self.hsm.data['opened_enter'] == 1
@@ -117,7 +114,7 @@ class Test_simple_two_state_door_machine():
 
     def test_transition_to_closed(self):
         self.eb.dispatch(CloseDoor())
-        assert self.hsm.current_state_set == set([self.closed])
+        assert curr_state(self.hsm) == 'closed'
         assert self.hsm.data['closed_enter'] == 2  # changed
         assert self.hsm.data['closed_exit'] == 1
         assert self.hsm.data['opened_enter'] == 1
@@ -127,7 +124,7 @@ class Test_simple_two_state_door_machine():
 
     def test_ignores_close_while_closed_again(self):
         self.eb.dispatch(CloseDoor())
-        assert self.hsm.current_state_set == set([self.closed])
+        assert curr_state(self.hsm) == 'closed'
         assert self.hsm.data['closed_enter'] == 2
         assert self.hsm.data['closed_exit'] == 1
         assert self.hsm.data['opened_enter'] == 1
@@ -137,7 +134,7 @@ class Test_simple_two_state_door_machine():
 
     def test_transition_to_opened_again(self):
         self.eb.dispatch(OpenDoor())
-        assert self.hsm.current_state_set == set([self.opened])
+        assert curr_state(self.hsm) == 'opened'
         assert self.hsm.data['closed_enter'] == 2
         assert self.hsm.data['closed_exit'] == 2  # changed
         assert self.hsm.data['opened_enter'] == 2  # changed
@@ -147,7 +144,7 @@ class Test_simple_two_state_door_machine():
 
     def test_transition_to_closed_again(self):
         self.eb.dispatch(CloseDoor())
-        assert self.hsm.current_state_set == set([self.closed])
+        assert curr_state(self.hsm) == 'closed'
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['closed_enter'] == 3  # changed
         assert self.hsm.data['closed_exit'] == 2
@@ -256,7 +253,7 @@ class Test_loops_and_multiple_paths_machine():
 
     def test_in_start_state_after_starting(self):
         self.hsm.start(self.eb)
-        assert self.hsm.current_state_set == set([self.start])
+        assert curr_state(self.hsm) == 'start'
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data.values().count(0) == 7
@@ -264,14 +261,14 @@ class Test_loops_and_multiple_paths_machine():
     def test_ignore_loop_and_restart_events_while_in_start(self):
         self.eb.dispatch(Loop())
         self.eb.dispatch(Restart())
-        assert self.hsm.current_state_set == set([self.start])
+        assert curr_state(self.hsm) == 'start'
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data.values().count(0) == 7
 
     def test_transition_to_goal_via_right(self):
         self.eb.dispatch(MoveRight())
-        assert self.hsm.current_state_set == set([self.goal])
+        assert curr_state(self.hsm) == 'goal'
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1  # changed
         assert self.hsm.data['goal_enter'] == 1  # changed
@@ -284,7 +281,7 @@ class Test_loops_and_multiple_paths_machine():
     def test_ignore_left_and_right_events_while_in_goal(self):
         self.eb.dispatch(MoveLeft())
         self.eb.dispatch(MoveRight())
-        assert self.hsm.current_state_set == set([self.goal])
+        assert curr_state(self.hsm) == 'goal'
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1
         assert self.hsm.data['goal_enter'] == 1
@@ -296,7 +293,7 @@ class Test_loops_and_multiple_paths_machine():
 
     def test_loop_in_goal(self):
         self.eb.dispatch(Loop())
-        assert self.hsm.current_state_set == set([self.goal])
+        assert curr_state(self.hsm) == 'goal'
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1
         assert self.hsm.data['goal_enter'] == 2  # changed
@@ -306,7 +303,7 @@ class Test_loops_and_multiple_paths_machine():
         assert self.hsm.data['trans_loop'] == 1  # changed
         assert self.hsm.data['trans_restart'] == 0
         self.eb.dispatch(Loop())
-        assert self.hsm.current_state_set == set([self.goal])
+        assert curr_state(self.hsm) == 'goal'
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1
         assert self.hsm.data['goal_enter'] == 3  # changed
@@ -316,7 +313,7 @@ class Test_loops_and_multiple_paths_machine():
         assert self.hsm.data['trans_loop'] == 2  # changed
         assert self.hsm.data['trans_restart'] == 0
         self.eb.dispatch(Loop())
-        assert self.hsm.current_state_set == set([self.goal])
+        assert curr_state(self.hsm) == 'goal'
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1
         assert self.hsm.data['goal_enter'] == 4  # changed
@@ -329,7 +326,7 @@ class Test_loops_and_multiple_paths_machine():
     def test_restart(self):
         assert self.hsm.data['initial'] == 1
         self.eb.dispatch(Restart())
-        assert self.hsm.current_state_set == set([self.start])
+        assert curr_state(self.hsm) == 'start'
         assert self.hsm.data['initial'] == 2  # changed
         assert self.hsm.data['start_enter'] == 2  # changed
         assert self.hsm.data['start_exit'] == 1
@@ -355,7 +352,7 @@ class Test_loops_and_multiple_paths_machine():
 
     def test_transition_to_goal_via_left(self):
         self.eb.dispatch(MoveLeft())
-        assert self.hsm.current_state_set == set([self.goal])
+        assert curr_state(self.hsm) == 'goal'
         assert self.hsm.data['start_enter'] == 2
         assert self.hsm.data['start_exit'] == 2  # changed
         assert self.hsm.data['goal_enter'] == 5  # changed
@@ -435,7 +432,7 @@ class Test_perpetual_machine(object):
 def curr_state(hsm):
     ls = list(hsm.current_state_set)
     assert len(ls) == 1
-    return ls[0].name[-1]
+    return ls[0].name
 
 
 class Test_entry_exit_actions(object):
@@ -504,7 +501,7 @@ class Test_entry_exit_actions(object):
 
 class Test_miro_machine(object):
     def setup_class(self):
-        self.states, self.trans = make_miro_machine()
+        self.states, self.trans = make_miro_machine(use_logging=True)
         self.hsm = HSM(self.states, self.trans)
         self.eb = EventBus()
 
