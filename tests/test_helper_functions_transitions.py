@@ -1,7 +1,7 @@
 import pytest
 from hsmpy import State, HSM, Event, Initial
-from hsmpy.statemachine import (_get_merged_sequences, _get_responses,
-                                _get_state_by_sig)
+from hsmpy.statemachine import (get_merged_sequences, get_responses,
+                                get_state_by_sig)
 from predefined_machines import make_miro_machine, make_nested_machine
 from predefined_machines import (A, B, C, D, E, F, G, H, I, TERMINATE, AB_ex,
                                  AC_ex, BC_ex, AB_loc, AC_loc, BC_loc, BA_ex,
@@ -53,10 +53,10 @@ class Test_get_response_guards_irrelevant(object):
     def test_run(self, from_state, Event, expected_responding_state,
                  expected_transition_target):
         mock_hsm = MockHSM()
-        from_state = _get_state_by_sig((from_state,), self.hsm.flattened)
+        from_state = get_state_by_sig((from_state,), self.hsm.flattened)
         state_set = set([from_state])
 
-        responses = _get_responses(state_set, Event(),
+        responses = get_responses(state_set, Event(),
                                    self.hsm.trans, mock_hsm)
         assert len(responses) == 1  # since there are no submachines
 
@@ -104,10 +104,10 @@ class Test_get_response_considering_guards(object):
                  expected_responding_state, expected_transition_target):
         mock_hsm = MockHSM()
         mock_hsm.data.foo = foo_before
-        from_state = _get_state_by_sig((from_state,), self.hsm.flattened)
+        from_state = get_state_by_sig((from_state,), self.hsm.flattened)
         state_set = set([from_state])
 
-        responses = _get_responses(state_set, Event(),
+        responses = get_responses(state_set, Event(),
                                    self.hsm.trans, mock_hsm)
 
         if expected_responding_state is None:
@@ -351,10 +351,10 @@ class Test_transition_sequences(object):
                  expected_entries):
         mock_hsm = MockHSM()
         mock_hsm.data.foo = foo_before
-        from_state = _get_state_by_sig((from_state,), hsm.flattened)
+        from_state = get_state_by_sig((from_state,), hsm.flattened)
         state_set = set([from_state])
 
-        exits, entries, res_states = _get_merged_sequences(
+        exits, entries, res_states = get_merged_sequences(
             state_set, Event(), hsm.flattened, trans, mock_hsm)
 
         exits_names = [str(act) for act in exits]

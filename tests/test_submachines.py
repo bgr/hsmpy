@@ -1,6 +1,6 @@
 import pytest
 from hsmpy import HSM, EventBus
-from hsmpy.statemachine import _get_responses, _get_state_by_sig
+from hsmpy.statemachine import get_responses, get_state_by_sig
 from hsmpy import Initial
 from hsmpy import Transition as T
 from hsmpy import LocalTransition as Local
@@ -93,9 +93,9 @@ class Test_get_response_submachines(object):
                              responding_submachines)
     def test_run(self, from_states, Event, expected_responding_states,
                  expected_transition_targets):
-        starting_states = [_get_state_by_sig(sig, self.hsm.flattened)
+        starting_states = [get_state_by_sig(sig, self.hsm.flattened)
                            for sig in from_states]
-        resps = _get_responses(starting_states, Event(), self.hsm.trans, None)
+        resps = get_responses(starting_states, Event(), self.hsm.trans, None)
 
         if expected_responding_states or expected_transition_targets:
             _, resp_states, trans = zip(*resps)

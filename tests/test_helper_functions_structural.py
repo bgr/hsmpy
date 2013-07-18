@@ -1,20 +1,20 @@
 import pytest
-from hsmpy.statemachine import (_get_path,
-                                _get_path_from_root,
-                                _get_common_parent,
-                                _get_events,
-                                _get_state_by_sig,
-                                _get_incoming_transitions,
-                                _find_duplicates,
-                                _find_duplicate_sigs,
-                                _find_nonexistent_transition_sources,
-                                _find_nonexistent_transition_targets,
-                                _find_missing_initial_transitions,
-                                _find_invalid_initial_transitions,
-                                _find_invalid_local_transitions,
-                                _find_unreachable_states,
-                                _flatten,
-                                _reformat,
+from hsmpy.statemachine import (get_path,
+                                get_path_from_root,
+                                get_common_parent,
+                                get_events,
+                                get_state_by_sig,
+                                get_incoming_transitions,
+                                find_duplicate_sigs,
+                                find_nonexistent_transition_sources,
+                                find_nonexistent_transition_targets,
+                                find_missing_initial_transitions,
+                                find_invalid_initial_transitions,
+                                find_invalid_local_transitions,
+                                find_unreachable_states,
+                                flatten,
+                                duplicates,
+                                reformat,
                                 )
 
 from hsmpy import Initial, Event
@@ -50,22 +50,22 @@ class Test_get_path(object):
         right_A_1 = MockState(parent=right_A)
         right_A_2 = MockState(parent=right_A)
 
-        assert _get_path(root, root) == ([], root, [])
-        assert _get_path(left, left) == ([], left, [])
-        assert _get_path(left_A, left_B) == ([left_A], left, [left_B])
-        assert _get_path(left_B, left_A) == ([left_B], left, [left_A])
-        assert _get_path(middle, root) == ([middle], root, [])
-        assert _get_path(root, middle) == ([], root, [middle])
-        assert _get_path(middle_A, left_A) == ([middle_A, middle],
+        assert get_path(root, root) == ([], root, [])
+        assert get_path(left, left) == ([], left, [])
+        assert get_path(left_A, left_B) == ([left_A], left, [left_B])
+        assert get_path(left_B, left_A) == ([left_B], left, [left_A])
+        assert get_path(middle, root) == ([middle], root, [])
+        assert get_path(root, middle) == ([], root, [middle])
+        assert get_path(middle_A, left_A) == ([middle_A, middle],
                                                root, [left, left_A])
-        assert _get_path(right_A_1, left) == ([right_A_1, right_A, right],
+        assert get_path(right_A_1, left) == ([right_A_1, right_A, right],
                                               root, [left])
-        assert _get_path(right_A_2, left_B) == ([right_A_2, right_A, right],
+        assert get_path(right_A_2, left_B) == ([right_A_2, right_A, right],
                                                 root, [left, left_B])
-        assert _get_path(left_B, right_A_2) == ([left_B, left], root,
+        assert get_path(left_B, right_A_2) == ([left_B, left], root,
                                                 [right, right_A, right_A_2])
-        assert _get_path(right_A, root) == ([right_A, right], root, [])
-        assert _get_path(root, right_A) == ([], root, [right, right_A])
+        assert get_path(right_A, root) == ([right_A, right], root, [])
+        assert get_path(root, right_A) == ([], root, [right, right_A])
 
     def test_with_HSM_instance(self):
         states = {
@@ -92,10 +92,10 @@ class Test_get_path(object):
 
         flattened = HSM(states, {}, skip_validation=True).flattened
 
-        left_B = _get_state_by_sig(('left_B',), flattened)
-        deep = _get_state_by_sig(('deep',), flattened)
+        left_B = get_state_by_sig(('left_B',), flattened)
+        deep = get_state_by_sig(('deep',), flattened)
 
-        exits, parent, entries = _get_path(deep, left_B)
+        exits, parent, entries = get_path(deep, left_B)
         exits = [st.name for st in exits]
         entries = [st.name for st in entries]
 
@@ -108,13 +108,13 @@ class Test_get_path_from_root(object):
 
     def test_single_node(self):
         root = MockState(parent=None)
-        assert _get_path_from_root(root) == [root]
+        assert get_path_from_root(root) == [root]
 
     def test_one_nested(self):
         root = MockState(parent=None)
         ch_1 = MockState(parent=root)
-        assert _get_path_from_root(root) == [root]
-        assert _get_path_from_root(ch_1) == [root, ch_1]
+        assert get_path_from_root(root) == [root]
+        assert get_path_from_root(ch_1) == [root, ch_1]
 
     def test_multiple_nested(self):
         root = MockState(parent=None)
@@ -122,11 +122,11 @@ class Test_get_path_from_root(object):
         ch_2 = MockState(parent=ch_1)
         ch_3 = MockState(parent=ch_2)
         ch_4 = MockState(parent=ch_3)
-        assert _get_path_from_root(root) == [root]
-        assert _get_path_from_root(ch_1) == [root, ch_1]
-        assert _get_path_from_root(ch_2) == [root, ch_1, ch_2]
-        assert _get_path_from_root(ch_3) == [root, ch_1, ch_2, ch_3]
-        assert _get_path_from_root(ch_4) == [root, ch_1, ch_2, ch_3, ch_4]
+        assert get_path_from_root(root) == [root]
+        assert get_path_from_root(ch_1) == [root, ch_1]
+        assert get_path_from_root(ch_2) == [root, ch_1, ch_2]
+        assert get_path_from_root(ch_3) == [root, ch_1, ch_2, ch_3]
+        assert get_path_from_root(ch_4) == [root, ch_1, ch_2, ch_3, ch_4]
 
     def test_branching(self):
         root = MockState(parent=None)
@@ -146,19 +146,19 @@ class Test_get_path_from_root(object):
         right_A_1 = MockState(parent=right_A)
         right_A_2 = MockState(parent=right_A)
 
-        assert _get_path_from_root(left) == [root, left]
-        assert _get_path_from_root(left_A) == [root, left, left_A]
-        assert _get_path_from_root(left_B) == [root, left, left_B]
-        assert _get_path_from_root(middle) == [root, middle]
-        assert _get_path_from_root(middle_A) == [root, middle, middle_A]
-        assert _get_path_from_root(middle_B) == [root, middle, middle_B]
-        assert _get_path_from_root(middle_C) == [root, middle, middle_C]
-        assert _get_path_from_root(right) == [root, right]
-        assert _get_path_from_root(right_A) == [root, right, right_A]
-        assert _get_path_from_root(right_B) == [root, right, right_B]
-        assert _get_path_from_root(right_A_1) == [root, right, right_A,
+        assert get_path_from_root(left) == [root, left]
+        assert get_path_from_root(left_A) == [root, left, left_A]
+        assert get_path_from_root(left_B) == [root, left, left_B]
+        assert get_path_from_root(middle) == [root, middle]
+        assert get_path_from_root(middle_A) == [root, middle, middle_A]
+        assert get_path_from_root(middle_B) == [root, middle, middle_B]
+        assert get_path_from_root(middle_C) == [root, middle, middle_C]
+        assert get_path_from_root(right) == [root, right]
+        assert get_path_from_root(right_A) == [root, right, right_A]
+        assert get_path_from_root(right_B) == [root, right, right_B]
+        assert get_path_from_root(right_A_1) == [root, right, right_A,
                                                   right_A_1]
-        assert _get_path_from_root(right_A_2) == [root, right, right_A,
+        assert get_path_from_root(right_A_2) == [root, right, right_A,
                                                   right_A_2]
 
     def test_with_HSM_instance(self):
@@ -185,8 +185,8 @@ class Test_get_path_from_root(object):
         }
 
         flattened = HSM(states, {}, skip_validation=True).flattened
-        deep = _get_state_by_sig(('deep',), flattened)
-        state_names = [state.name for state in _get_path_from_root(deep)]
+        deep = get_state_by_sig(('deep',), flattened)
+        state_names = [state.name for state in get_path_from_root(deep)]
         assert state_names == ['root', 'right', 'right_A', 'deep']
 
 
@@ -194,14 +194,14 @@ class Test_get_common_parent(object):
 
     def test_single_node(self):
         root = MockState(parent=None)
-        assert _get_common_parent(root, root) == root
+        assert get_common_parent(root, root) == root
 
     def test_one_nested(self):
         root = MockState(parent=None)
         ch_1 = MockState(parent=root)
-        assert _get_common_parent(root, ch_1) == root
-        assert _get_common_parent(ch_1, root) == root
-        assert _get_common_parent(ch_1, ch_1) == ch_1
+        assert get_common_parent(root, ch_1) == root
+        assert get_common_parent(ch_1, root) == root
+        assert get_common_parent(ch_1, ch_1) == ch_1
 
     def test_multiple_nested(self):
         root = MockState(parent=None)
@@ -209,16 +209,16 @@ class Test_get_common_parent(object):
         ch_2 = MockState(parent=ch_1)
         ch_3 = MockState(parent=ch_2)
         ch_4 = MockState(parent=ch_3)
-        assert _get_common_parent(root, ch_2) == root
-        assert _get_common_parent(ch_2, root) == root
-        assert _get_common_parent(ch_1, ch_2) == ch_1
-        assert _get_common_parent(ch_2, ch_1) == ch_1
-        assert _get_common_parent(ch_1, ch_3) == ch_1
-        assert _get_common_parent(ch_3, ch_1) == ch_1
-        assert _get_common_parent(ch_4, ch_3) == ch_3
-        assert _get_common_parent(ch_3, ch_4) == ch_3
-        assert _get_common_parent(ch_1, ch_4) == ch_1
-        assert _get_common_parent(root, ch_4) == root
+        assert get_common_parent(root, ch_2) == root
+        assert get_common_parent(ch_2, root) == root
+        assert get_common_parent(ch_1, ch_2) == ch_1
+        assert get_common_parent(ch_2, ch_1) == ch_1
+        assert get_common_parent(ch_1, ch_3) == ch_1
+        assert get_common_parent(ch_3, ch_1) == ch_1
+        assert get_common_parent(ch_4, ch_3) == ch_3
+        assert get_common_parent(ch_3, ch_4) == ch_3
+        assert get_common_parent(ch_1, ch_4) == ch_1
+        assert get_common_parent(root, ch_4) == root
 
     def test_branching(self):
         root = MockState(parent=None)
@@ -238,22 +238,22 @@ class Test_get_common_parent(object):
         right_B = MockState(parent=right)
         right_B_1 = MockState(parent=right_B)
 
-        assert _get_common_parent(left, middle) == root
-        assert _get_common_parent(middle, left) == root
-        assert _get_common_parent(left, right) == root
-        assert _get_common_parent(middle, right) == root
-        assert _get_common_parent(middle, root) == root
-        assert _get_common_parent(left_A, root) == root
-        assert _get_common_parent(root, left_A) == root
-        assert _get_common_parent(left_A, left) == left
-        assert _get_common_parent(left_A, left_B) == left
-        assert _get_common_parent(left_A, middle) == root
-        assert _get_common_parent(right_A, right_B) == right
-        assert _get_common_parent(right_A, left_A) == root
-        assert _get_common_parent(right_A_1, middle_A) == root
-        assert _get_common_parent(right_A_1, right_B) == right
-        assert _get_common_parent(right_A_1, right_A_2) == right_A
-        assert _get_common_parent(right_A_1, right_B_1) == right
+        assert get_common_parent(left, middle) == root
+        assert get_common_parent(middle, left) == root
+        assert get_common_parent(left, right) == root
+        assert get_common_parent(middle, right) == root
+        assert get_common_parent(middle, root) == root
+        assert get_common_parent(left_A, root) == root
+        assert get_common_parent(root, left_A) == root
+        assert get_common_parent(left_A, left) == left
+        assert get_common_parent(left_A, left_B) == left
+        assert get_common_parent(left_A, middle) == root
+        assert get_common_parent(right_A, right_B) == right
+        assert get_common_parent(right_A, left_A) == root
+        assert get_common_parent(right_A_1, middle_A) == root
+        assert get_common_parent(right_A_1, right_B) == right
+        assert get_common_parent(right_A_1, right_A_2) == right_A
+        assert get_common_parent(right_A_1, right_B_1) == right
 
     def test_after_reformat(self):
         states = {
@@ -279,36 +279,36 @@ class Test_get_common_parent(object):
 
         flattened = HSM(states, {}, skip_validation=True).flattened
 
-        left_A = _get_state_by_sig(('left_A',), flattened)
-        left_B = _get_state_by_sig(('left_B',), flattened)
-        right_A_1 = _get_state_by_sig(('right_A_1',), flattened)
-        right_B = _get_state_by_sig(('right_B',), flattened)
+        left_A = get_state_by_sig(('left_A',), flattened)
+        left_B = get_state_by_sig(('left_B',), flattened)
+        right_A_1 = get_state_by_sig(('right_A_1',), flattened)
+        right_B = get_state_by_sig(('right_B',), flattened)
 
-        assert _get_common_parent(left_A, left_B).name == 'left'
-        assert _get_common_parent(left_A, right_A_1).name == 'root'
-        assert _get_common_parent(right_A_1, right_B).name == 'right'
+        assert get_common_parent(left_A, left_B).name == 'left'
+        assert get_common_parent(left_A, right_A_1).name == 'root'
+        assert get_common_parent(right_A_1, right_B).name == 'right'
 
 
 
 class Test_find_duplicates(object):
 
     def test_empty(self):
-        assert _find_duplicates(None) == []
-        assert _find_duplicates([]) == []
+        assert duplicates(None) == []
+        assert duplicates([]) == []
 
     def test_no_duplicates(self):
-        assert _find_duplicates([1]) == []
-        assert _find_duplicates([1, 2, 3, 4]) == []
+        assert duplicates([1]) == []
+        assert duplicates([1, 2, 3, 4]) == []
 
     def test_one_duplicate(self):
-        assert _find_duplicates([1, 1]) == [1]
-        assert _find_duplicates([1, 1, 2]) == [1]
-        assert _find_duplicates([1, 2, 1]) == [1]
-        assert _find_duplicates([2, 1, 1]) == [1]
-        assert _find_duplicates(list('abCdefgChi')) == ['C']
+        assert duplicates([1, 1]) == [1]
+        assert duplicates([1, 1, 2]) == [1]
+        assert duplicates([1, 2, 1]) == [1]
+        assert duplicates([2, 1, 1]) == [1]
+        assert duplicates(list('abCdefgChi')) == ['C']
 
     def test_multiple_duplicates(self):
-        dups = _find_duplicates(list('abC_dEfgCh_iEjE__k'))
+        dups = duplicates(list('abC_dEfgCh_iEjE__k'))
         assert sorted(dups) == sorted(['C', 'E', '_'])
 
     def test_duplicate_state_names(self):
@@ -330,7 +330,7 @@ class Test_find_duplicates(object):
         }
         hsm = HSM(states, {}, skip_validation=True)
         # extract name from tuple
-        dups = [name[-1] for name in _find_duplicate_sigs(hsm.flattened)]
+        dups = [name[-1] for name in find_duplicate_sigs(hsm.flattened)]
         assert sorted(dups) == sorted(['left', 'right', 'left_B'])
 
 
@@ -412,14 +412,14 @@ class Test_structural_analysis(object):
         self.hsm = HSM(states, trans, skip_validation=True)
 
     def test_get_state_by_sig(self):
-        f = lambda nice: _get_state_by_sig((nice,), self.hsm.flattened)
+        f = lambda nice: get_state_by_sig((nice,), self.hsm.flattened)
         assert f('top').name == 'top'
         assert f('left').name == 'left'
         assert f('mid_A').name == 'mid_A'
         assert f('right_B').name == 'right_B'
 
     def test_get_state_by_sig_in_orthogonal(self):
-        f = lambda tup: _get_state_by_sig(tup, self.hsm.flattened)
+        f = lambda tup: get_state_by_sig(tup, self.hsm.flattened)
         assert f(('ortho',)).sig == ('ortho',)
         assert f(('ortho', 0, 'sub1')).sig == ('ortho', 0, 'sub1')
         assert f(('ortho', 1, 'sub2')).sig == ('ortho', 1, 'sub2')
@@ -429,7 +429,7 @@ class Test_structural_analysis(object):
         # exclude Transition objects from result tuples for cleaner checks
         def f(name, include_loops):
             res = [(src[-1], evt) for src, evt, _tran
-                   in _get_incoming_transitions((name,), self.hsm.trans,
+                   in get_incoming_transitions((name,), self.hsm.trans,
                                                 include_loops)]
             return sorted(res)
 
@@ -455,32 +455,32 @@ class Test_structural_analysis(object):
 
 
     def test_find_nonexistent_transition_sources(self):
-        t = _find_nonexistent_transition_sources(self.hsm.flattened,
+        t = find_nonexistent_transition_sources(self.hsm.flattened,
                                                  self.hsm.trans)
         assert sorted(t) == sorted([('bad_source_1',), ('bad_source_2',)])
 
 
     def test_find_nonexistent_transition_targets(self):
-        t = _find_nonexistent_transition_targets(self.hsm.flattened,
+        t = find_nonexistent_transition_targets(self.hsm.flattened,
                                                  self.hsm.trans)
         assert sorted(t) == sorted([('bad_target_1',), ('bad_target_2',)])
 
 
     def test_find_missing_initial_transitions(self):
-        func = _find_missing_initial_transitions
+        func = find_missing_initial_transitions
         names = [s.name for s in func(self.hsm.flattened, self.hsm.trans)]
         assert sorted(names) == sorted(['left', 'bad', 'ortho[1].sub2'])
 
 
     def test_find_invalid_initial_transitions(self):
-        func = _find_invalid_initial_transitions
+        func = find_invalid_initial_transitions
         names = [s.name for s in func(self.hsm.flattened, self.hsm.trans)]
         assert sorted(names) == sorted(['top', 'middle', 'right'])
 
 
     def test_find_invalid_local_transitions(self):
         res_tuples = [(src[-1], evt, tran[-1]) for src, evt, tran
-                      in _find_invalid_local_transitions(self.hsm.flattened,
+                      in find_invalid_local_transitions(self.hsm.flattened,
                                                          self.hsm.trans)]
         assert sorted(res_tuples) == sorted([
             ('left_B', 'A', 'left_A'),
@@ -491,7 +491,7 @@ class Test_structural_analysis(object):
 
     def test_find_unreachable_states(self):
         names = [st.name  # first element of tuple
-                 for st in _find_unreachable_states(self.hsm.root,
+                 for st in find_unreachable_states(self.hsm.root,
                                                     self.hsm.flattened,
                                                     self.hsm.trans)]
         expected = ['middle', 'mid_A', 'right_A', 'right_B', 'bad', 'bad1',
@@ -505,13 +505,13 @@ class Test_get_events(object):
     def test_miro_machine_events(self):
         states, trans = make_miro_machine(use_logging=False)
         hsm = HSM(states, trans)
-        event_set = _get_events(hsm.flattened, trans)
+        event_set = get_events(hsm.flattened, trans)
         assert event_set == set([A, B, C, D, E, F, G, H, I, TERMINATE])
 
     def test_nested_machine_events(self):
         states, trans = make_nested_machine(False)
         hsm = HSM(states, trans)
-        event_set = _get_events(hsm.flattened, trans)
+        event_set = get_events(hsm.flattened, trans)
         assert event_set == set([A, B, C, AB_ex, AC_ex, BC_ex, AB_loc, AC_loc,
                                  BC_loc, BA_ex, CA_ex, CB_ex, BA_loc, CA_loc,
                                  CB_loc])
@@ -556,7 +556,7 @@ class Test_get_events_with_subclasses(object):
         self.hsm = HSM(self.states, self.trans)
 
     def test_get_events(self):
-        event_set = _get_events(self.hsm.flattened, self.trans)
+        event_set = get_events(self.hsm.flattened, self.trans)
         # RootEventB shouldn't appear in event_set since nobody explicitly
         # listens to it, only its subclasses
         assert event_set == set([RootEventA, RootEventC, A1, A2, B1, C1, C2,
@@ -565,12 +565,12 @@ class Test_get_events_with_subclasses(object):
 
 class Test_flatten(object):
     def test_single_empty(self):
-        assert _flatten([]) == []
+        assert flatten([]) == []
 
     def test_with_list(self):
         a = [1, 2, [3, 4, [5, 6], 7, [8, 9]], 10, [11, [12, 13]], 14]
         exp = list(range(1, 15))
-        assert sorted(_flatten(a)) == sorted(exp)
+        assert sorted(flatten(a)) == sorted(exp)
 
     def test_nested_empty(self):
         states = [
@@ -600,7 +600,7 @@ class Test_flatten(object):
                 leaf('c2'),
             ]),
         ]
-        names = [st.name for st in _flatten(states)]
+        names = [st.name for st in flatten(states)]
         expected = ['a', 'submachines', 'sub1', 'sub11', 'sub12', 'sub121',
                     'sub122', 'sub2', 'sub21', 'sub22', 'sub221', 'sub222',
                     'b', 'b1', 'c', 'c1', 'c2']
@@ -629,24 +629,24 @@ leaf = lambda name: get_state('leaf', name, [])
 
 class Test_reformat(object):
     def test_empty(self):
-        assert _reformat({}, {}) == ([], {})
+        assert reformat({}, {}) == ([], {})
 
     def test_empty_with_prefix(self):
-        assert _reformat({}, {}, prefix=('pfx', 1)) == ([], {})
+        assert reformat({}, {}, prefix=('pfx', 1)) == ([], {})
 
     def test_reformat_states_shallow(self):
         states = {
             'a': State(),
         }
         expected_states = [ leaf('a') ]
-        assert _reformat(states, {}) == (expected_states, {})
+        assert reformat(states, {}) == (expected_states, {})
 
     def test_reformat_states_shallow_with_prefix(self):
         states = {
             'a': State(),
         }
         exp_states = [ leaf('pfx[1].a') ]
-        assert _reformat(states, {}, prefix=('pfx', 1)) == (exp_states, {})
+        assert reformat(states, {}, prefix=('pfx', 1)) == (exp_states, {})
 
     def test_renamed_transition_sources_and_targets(self):
         action = lambda a: a
@@ -668,7 +668,7 @@ class Test_reformat(object):
                 A: T(('c',), action=action)
             }
         }
-        assert _reformat({}, trans) == ([], expected_trans)
+        assert reformat({}, trans) == ([], expected_trans)
 
     def test_renamed_transition_sources_and_targets_with_prefix(self):
         action = lambda a: a
@@ -690,7 +690,7 @@ class Test_reformat(object):
                 A: T(('pfx', 1, 'c',), action=action)
             }
         }
-        assert _reformat({}, trans, prefix=('pfx', 1)) == ([], expected_trans)
+        assert reformat({}, trans, prefix=('pfx', 1)) == ([], expected_trans)
 
     def test_reformat_simple_submachine(self):
         states = {
@@ -719,7 +719,7 @@ class Test_reformat(object):
             ])
         ]
 
-        assert _reformat(states, {}) == (exp_states, {})
+        assert reformat(states, {}) == (exp_states, {})
 
     def test_reformat_nested_submachines(self):
         states = {
@@ -788,7 +788,7 @@ class Test_reformat(object):
             ])
         ]
 
-        assert _reformat(states, {}) == (exp_states, {})
+        assert reformat(states, {}) == (exp_states, {})
 
     def test_submachine_transitions_merged_to_main_trans_dict(self):
         # this will branch 4 times
@@ -886,12 +886,12 @@ class Test_reformat(object):
             }
         }
 
-        _, renamed_trans = _reformat(states, trans)
+        _, renamed_trans = reformat(states, trans)
         assert renamed_trans == expected_trans
 
 
     def test_reformat_miro_machine(self):
-        states, _ = _reformat(*make_miro_machine(use_logging=False))
+        states, _ = reformat(*make_miro_machine(use_logging=False))
         expected_states = [
             composite('top', [
                 composite('s', [

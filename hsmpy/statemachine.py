@@ -265,7 +265,7 @@ class HSM(object):
                 dictionary that maps states described in states_map to their
                 corresponding event-transition map
         """
-        top, flattened, trans = _parse(states_map, transitions_map)
+        top, flattened, trans = parse(states_map, transitions_map)
         self.flattened = flattened
         self.root = top
         self.trans = trans
@@ -296,7 +296,7 @@ class HSM(object):
 
         self.eb = eventbus
 
-        self.event_set = _get_events(self.flattened, self.trans)
+        self.event_set = get_events(self.flattened, self.trans)
         [self.eb.register(evt, self._handle_event) for evt in self.event_set]
 
         self._running = True
@@ -342,7 +342,7 @@ class HSM(object):
             it if none of the states in HSM's current state set is interested
             in that event (or guards don't pass).
         """
-        exits, entries, new_states = _get_merged_sequences(
+        exits, entries, new_states = get_merged_sequences(
             self.current_state_set, event_instance, self.flattened, self.trans,
             self)
 
@@ -394,26 +394,26 @@ class HSM(object):
         if not len(original_states) == 1:
             rs("State tree should have exactly one top (root) state")
 
-        unreachable = _find_unreachable_states(self.root, flat, trans)
+        unreachable = find_unreachable_states(self.root, flat, trans)
         chk("Unreachable states", unreachable)
 
-        duplicate_sigs = _find_duplicate_sigs(flat)
+        duplicate_sigs = find_duplicate_sigs(flat)
         chk("Duplicate state signatures", duplicate_sigs)
 
-        nonx_sources = _find_nonexistent_transition_sources(flat, trans)
+        nonx_sources = find_nonexistent_transition_sources(flat, trans)
         chk("Keys in trans_map pointing to nonexistent states", nonx_sources)
 
-        nonx_targets = _find_nonexistent_transition_targets(flat, trans)
+        nonx_targets = find_nonexistent_transition_targets(flat, trans)
         chk("Transition targets pointing to nonexistent states", nonx_targets)
 
-        miss = _find_missing_initial_transitions(flat, trans)
+        miss = find_missing_initial_transitions(flat, trans)
         chk("Composite states with missing initial transitions", miss)
 
-        inv_init = _find_invalid_initial_transitions(flat, trans)
+        inv_init = find_invalid_initial_transitions(flat, trans)
         chk("Invalid initial transitions (must not be loop, "
             "local or point outside of the state)", inv_init)
 
-        inv_local = _find_invalid_local_transitions(flat, trans)
+        inv_local = find_invalid_local_transitions(flat, trans)
         chk("Invalid local transitions (must be parent-child relationship, "
             "must not be loop or initial transition)", inv_local)
 
@@ -421,7 +421,7 @@ class HSM(object):
 # helper functions:
 
 
-def _get_state_by_sig(state_sig, flat_state_list):
+def get_state_by_sig(state_sig, flat_state_list):
     """
         Looks up and returns the state **instance** for given state **sig**.
     """
@@ -436,7 +436,7 @@ def _get_state_by_sig(state_sig, flat_state_list):
     return found[0]
 
 
-def _get_incoming_transitions(target_state_sig, trans_dict,
+def get_incoming_transitions(target_state_sig, trans_dict,
                               include_loops=False):
     """
         Returns list of incoming transitions to given state.
@@ -456,25 +456,25 @@ def _get_incoming_transitions(target_state_sig, trans_dict,
     return found
 
 
-def _get_path_from_root(to_state):
+def get_path_from_root(to_state):
     """
         Returns list of state **instances** that represent the path
         from root (inclusive) to given state.
     """
     if to_state.parent is None:
         return [to_state]
-    return _get_path_from_root(to_state.parent) + [to_state]
+    return get_path_from_root(to_state.parent) + [to_state]
 
 
-def _get_path(from_state, to_state):
+def get_path(from_state, to_state):
     """
         Returns the path from given state **instance** to another.
 
         Return value is 3-tuple (list_of_state_instances_to_exit,
         common_parent, list_of_state_instances_to_enter).
     """
-    from_path = _get_path_from_root(from_state)
-    to_path = _get_path_from_root(to_state)
+    from_path = get_path_from_root(from_state)
+    to_path = get_path_from_root(to_state)
     common_path = [a for a, b in zip(from_path, to_path) if a == b]
     common_parent = common_path[-1]
     exits = list(reversed([st for st in from_path if st not in common_path]))
@@ -482,17 +482,17 @@ def _get_path(from_state, to_state):
     return (exits, common_parent, entries)
 
 
-def _get_common_parent(state_A, state_B):
+def get_common_parent(state_A, state_B):
     """
         Returns the common parent state **instance** for given two state
         **instances**.
 
         If one state is parent of the other, it'll return that state.
     """
-    return _get_path(state_A, state_B)[1]
+    return get_path(state_A, state_B)[1]
 
 
-def _get_state_response(source_state, event_instance, trans_dict, hsm):
+def get_state_response(source_state, event_instance, trans_dict, hsm):
     """
         Returns state that responds to given event when machine is in
         *source_state*, and transition to follow.
@@ -505,18 +505,18 @@ def _get_state_response(source_state, event_instance, trans_dict, hsm):
         return (source_state, tran)
     # try looking up the hierarchy
     if source_state.parent is not None:
-        return _get_state_response(source_state.parent, event_instance,
+        return get_state_response(source_state.parent, event_instance,
                                    trans_dict, hsm)
     return (None, None)
 
 
-def _with_rest(ls):
+def with_rest(ls):
     """Generator - yields tuples (element, all_other_elements)"""
     for i, el in enumerate(ls):
         yield (el, ls[:i] + ls[i + 1:])
 
 
-def _get_responses(state_set, event, trans_dict, hsm):
+def get_responses(state_set, event, trans_dict, hsm):
     """
         Returns list of (source_state, responding_state, transition) tuples
         describing all states that respond to given *event* instance when
@@ -529,7 +529,7 @@ def _get_responses(state_set, event, trans_dict, hsm):
         Return value is set of tuples (responding_state, transition).
     """
     # prepend source state to response, it might be needed
-    resps = [( (st,) + _get_state_response(st, event, trans_dict, hsm) )
+    resps = [( (st,) + get_state_response(st, event, trans_dict, hsm) )
              for st in state_set]
 
     # exclude empty responses
@@ -538,7 +538,7 @@ def _get_responses(state_set, event, trans_dict, hsm):
     # remove duplicates
     filtered = _remove_duplicates(filtered, key=lambda el: el[1].sig)
 
-    is_child_of = lambda ch, par: par in _get_path_from_root(ch)
+    is_child_of = lambda ch, par: par in get_path_from_root(ch)
 
     # if orthogonal state responded, do not include it in the response list
     # it if any of its children states responded
@@ -548,14 +548,14 @@ def _get_responses(state_set, event, trans_dict, hsm):
                                                        for _, st, _ in rest
                                                        if st is not state]))
 
-    filtered = [r for r, rest in _with_rest(filtered) if can_include(r, rest)]
+    filtered = [r for r, rest in with_rest(filtered) if can_include(r, rest)]
 
     return filtered
 
 
-def _get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
+def get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
     # TODO: docstring
-    resp_state, tran = _get_state_response(src_state, event, trans_dict, hsm)
+    resp_state, tran = get_state_response(src_state, event, trans_dict, hsm)
 
     action_name = lambda st, descr: '{0}-{1}'.format(st.name, descr)
     evt_name = event.__class__.__name__
@@ -573,12 +573,12 @@ def _get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
     if isinstance(tran, _Internal):
         return [ ([], [tran_action], [src_state]) ]
 
-    target_state = _get_state_by_sig(tran.target, flat_states)
+    target_state = get_state_by_sig(tran.target, flat_states)
 
     # states to exit in order to get to responding state
-    exits_till_resp, _, _ = _get_path(src_state, resp_state)
+    exits_till_resp, _, _ = get_path(src_state, resp_state)
     # more to exit from responding state and then to enter to get to target
-    exits_from_resp, parent, entries = _get_path(resp_state, target_state)
+    exits_from_resp, parent, entries = get_path(resp_state, target_state)
     exits = exits_till_resp + exits_from_resp
 
     # also add exit and reentry actions for responding state if transition
@@ -616,7 +616,7 @@ def _get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
     # orthogonal state)
     elif target_state.kind == 'composite':
         tuples = [ (exit_acts, entry_acts, []) ]
-        tuples += _get_state_sequences(target_state, Initial(), flat_states,
+        tuples += get_state_sequences(target_state, Initial(), flat_states,
                                        trans_dict, hsm)
         return tuples
     # if transition ends at orthogonal state, add exits and entries we got so
@@ -626,13 +626,13 @@ def _get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
     # of each submachine
     elif target_state.kind == 'orthogonal':
         tuples = [ (exit_acts, entry_acts, []) ]
-        tuples += _get_transition_sequences(target_state.states, Initial(),
+        tuples += get_transition_sequences(target_state.states, Initial(),
                                             flat_states, trans_dict, hsm)
         return tuples
     assert False, "should never get here"
 
 
-def _get_transition_sequences(state_set, event, flat_states, trans_dict, hsm):
+def get_transition_sequences(state_set, event, flat_states, trans_dict, hsm):
     """
         Returns transition action sequence.
 
@@ -649,12 +649,12 @@ def _get_transition_sequences(state_set, event, flat_states, trans_dict, hsm):
         change of state is required.
     """
     seqs = [seq for st in state_set for seq in
-            _get_state_sequences(st, event, flat_states, trans_dict, hsm)]
+            get_state_sequences(st, event, flat_states, trans_dict, hsm)]
     return seqs
 
 
-def _get_merged_sequences(state_set, event, flat_states, trans_dict, hsm):
-    seqs = _get_transition_sequences(
+def get_merged_sequences(state_set, event, flat_states, trans_dict, hsm):
+    seqs = get_transition_sequences(
         state_set, event, flat_states, trans_dict, hsm)
 
     extract = lambda i: _remove_duplicates([el for s in seqs for el in s[i]])
@@ -669,7 +669,7 @@ def _get_merged_sequences(state_set, event, flat_states, trans_dict, hsm):
 
 
 
-def _get_events(flat_state_list, trans_dict):
+def get_events(flat_state_list, trans_dict):
     """
         Returns set of all event types that machine is
         interested in listening to.
@@ -685,7 +685,7 @@ def _get_events(flat_state_list, trans_dict):
     return set(events)
 
 
-def _add_prefix(name, prefix):
+def add_prefix(name, prefix):
     """Adds prefix to name"""
     prefix = prefix or ()
     if isinstance(name, str):
@@ -695,13 +695,13 @@ def _add_prefix(name, prefix):
     raise ValueError("Invalid state name '{0}'".format(name))
 
 
-def _rename_transitions(trans_dict, prefix):
+def rename_transitions(trans_dict, prefix):
     """Renames source state sigs and outgoing transition targets"""
     def rename_tran_target(tran):
         """Returns new transition with prefix prepended to target state sig"""
         if tran.target is None:
             return tran
-        new_name = _add_prefix(tran.target, prefix)
+        new_name = add_prefix(tran.target, prefix)
         return tran._make((new_name, tran.action, tran.guard))
 
     def rename_event_trans_map(trans_map):
@@ -709,11 +709,11 @@ def _rename_transitions(trans_dict, prefix):
         return dict([(evt, rename_tran_target(tran))
                      for evt, tran in trans_map.items()])
 
-    return dict([(_add_prefix(src_sig, prefix), rename_event_trans_map(outg))
+    return dict([(add_prefix(src_sig, prefix), rename_event_trans_map(outg))
                  for src_sig, outg in trans_dict.items()])
 
 
-def _reformat(states_dict, trans_dict, prefix=None):
+def reformat(states_dict, trans_dict, prefix=None):
     """
         Renames states and transition targets.
         Extracts trans dicts from tuples that define orthogonal submachines
@@ -730,7 +730,7 @@ def _reformat(states_dict, trans_dict, prefix=None):
             new_state = State()
             children = val
 
-        new_state.sig = _add_prefix(state_sig, prefix)
+        new_state.sig = add_prefix(state_sig, prefix)
         new_state.parent = parent_state
 
         if not children:  # empty list or dict
@@ -738,9 +738,9 @@ def _reformat(states_dict, trans_dict, prefix=None):
             subs, trans = ([], {})
         elif isinstance(children, list):
             new_state.kind = 'orthogonal'
-            ch_prefix = lambda i: _add_prefix(state_sig, prefix) + (i,)
+            ch_prefix = lambda i: add_prefix(state_sig, prefix) + (i,)
             # get renamed states and renamed trans for every submachine
-            subs, trans = zip(*[_reformat(sdict, tdict, ch_prefix(i))
+            subs, trans = zip(*[reformat(sdict, tdict, ch_prefix(i))
                                 for i, (sdict, tdict) in enumerate(children)])
             # subs is tuple of lists with one element (top state of submachine
             # assumes that validation has passed), converto into list of
@@ -751,7 +751,7 @@ def _reformat(states_dict, trans_dict, prefix=None):
         elif isinstance(children, dict):
             new_state.kind = 'composite'
             # trans are the same, so {} for nested states
-            subs, trans = _reformat(children, {}, prefix)
+            subs, trans = reformat(children, {}, prefix)
             trans = dict(trans)
         else:
             raise ValueError("Invalid element")  # TODO: move to validation
@@ -765,11 +765,11 @@ def _reformat(states_dict, trans_dict, prefix=None):
 
     fixed_states = [st for st, _ in fixed]
     fixed_trans = dict([kv for _, dct in fixed for kv in dct.items()])
-    fixed_trans.update(_rename_transitions(trans_dict, prefix))
+    fixed_trans.update(rename_transitions(trans_dict, prefix))
     return (fixed_states, fixed_trans)
 
 
-def _parse(states_dict, trans_dict):
+def parse(states_dict, trans_dict):
     """
         Recursively traverses the state tree described by states_dict and
         performs the following transformations:
@@ -784,17 +784,17 @@ def _parse(states_dict, trans_dict):
 
         Returns tuple (top_state, flattened_state_list, full_trans_dict).
     """
-    renamed_states, renamed_trans = _reformat(states_dict, trans_dict)
+    renamed_states, renamed_trans = reformat(states_dict, trans_dict)
     top_state = renamed_states[0]
-    flattened = _flatten(renamed_states)
+    flattened = flatten(renamed_states)
     return (top_state, flattened, renamed_trans)
 
 
-def _flatten(container):
+def flatten(container):
     if isinstance(container, list):
-        return [sub for cont_elem in container for sub in _flatten(cont_elem)]
+        return [sub for cont_elem in container for sub in flatten(cont_elem)]
     if isinstance(container, State):
-        return [container] + _flatten(container.states)
+        return [container] + flatten(container.states)
     return [container]  # any other object
 
 
@@ -807,21 +807,21 @@ def _remove_duplicates(ls, key=lambda el: el):
 
 # validation methods:
 
-def _find_duplicates(ls):
+def duplicates(ls):
     """Returns list of elements that occur more than once in the given list."""
     import collections
     return [el for el, n in collections.Counter(ls).items() if n > 1]
 
 
-def _find_duplicate_sigs(flat_state_list):
+def find_duplicate_sigs(flat_state_list):
     """
         Returns list of state **sigs** that occur more than once in the given
         flattened state list.
     """
-    return _find_duplicates([st.sig for st in flat_state_list])
+    return duplicates([st.sig for st in flat_state_list])
 
 
-def _find_nonexistent_transition_sources(flat_state_list, trans_dict):
+def find_nonexistent_transition_sources(flat_state_list, trans_dict):
     """
         Returns list of keys (state **instances**) found in transition map that
         don't have corresponding state in the states map.
@@ -830,7 +830,7 @@ def _find_nonexistent_transition_sources(flat_state_list, trans_dict):
     return [name for name in trans_dict.keys() if name not in state_names]
 
 
-def _find_nonexistent_transition_targets(flat_state_list, trans_dict):
+def find_nonexistent_transition_targets(flat_state_list, trans_dict):
     """
         Returns list of transition targets (state **names**) found in
         transition map that don't have corresponding state in the states map.
@@ -843,7 +843,7 @@ def _find_nonexistent_transition_targets(flat_state_list, trans_dict):
                 and tran.target not in state_names)]  # no corresponding state
 
 
-def _find_missing_initial_transitions(flat_state_list, trans_dict):
+def find_missing_initial_transitions(flat_state_list, trans_dict):
     """
         Returns list of composite state **instances** that don't have initial
         transition defined in transitions map.
@@ -855,7 +855,7 @@ def _find_missing_initial_transitions(flat_state_list, trans_dict):
                 trans_dict.get(st.sig).get(Initial) is None)]
 
 
-def _find_invalid_initial_transitions(flat_state_list, trans_dict):
+def find_invalid_initial_transitions(flat_state_list, trans_dict):
     """
         Returns list of composite state **instances** that have invalid initial
         transition defined.
@@ -864,22 +864,22 @@ def _find_invalid_initial_transitions(flat_state_list, trans_dict):
         LocalTransition, has a target which is not a child of the state.
     """
     # TODO: OR have guards (implemented but untested)
-    without = _find_missing_initial_transitions(flat_state_list, trans_dict)
+    without = find_missing_initial_transitions(flat_state_list, trans_dict)
     composites = [st for st in flat_state_list
                   if st.kind == 'composite' and st not in without]
 
     is_local = lambda tran: isinstance(tran, _Local)
     init_tran_of = lambda state: trans_dict[state.sig][Initial]
-    init_tran_target_of = lambda state: _get_state_by_sig(
+    init_tran_target_of = lambda state: get_state_by_sig(
         init_tran_of(state).target, flat_state_list)
 
     return [st for st in composites if is_local(init_tran_of(st))
             or init_tran_of(st).target == st.sig
-            or st not in _get_path_from_root(init_tran_target_of(st))
+            or st not in get_path_from_root(init_tran_target_of(st))
             or init_tran_of(st).guard(None, None) is not True]
 
 
-def _find_invalid_local_transitions(flat_state_list, trans_dict):
+def find_invalid_local_transitions(flat_state_list, trans_dict):
     """
         Returns list invalid local transitions.
 
@@ -888,14 +888,14 @@ def _find_invalid_local_transitions(flat_state_list, trans_dict):
         substate or vice versa (source and target must be in parent-child
         relationship), and cannot be a self-loop.
     """
-    bad_sources = _find_nonexistent_transition_sources(flat_state_list,
+    bad_sources = find_nonexistent_transition_sources(flat_state_list,
                                                        trans_dict)
-    bad_targets = _find_nonexistent_transition_targets(flat_state_list,
+    bad_targets = find_nonexistent_transition_targets(flat_state_list,
                                                        trans_dict)
     bad_state_sigs = bad_sources + bad_targets
 
-    get_by_sig = lambda sig: _get_state_by_sig(sig, flat_state_list)
-    common_parent = lambda sig_a, sig_b: _get_common_parent(
+    get_by_sig = lambda sig: get_state_by_sig(sig, flat_state_list)
+    common_parent = lambda sig_a, sig_b: get_common_parent(
         get_by_sig(sig_a), get_by_sig(sig_b)).sig
 
     return [(st_sig, evt.__name__, tran.target)
@@ -907,7 +907,7 @@ def _find_invalid_local_transitions(flat_state_list, trans_dict):
             common_parent(st_sig, tran.target) not in [st_sig, tran.target])]
 
 
-def _find_unreachable_states(top_state, flat_state_list, trans_dict):
+def find_unreachable_states(top_state, flat_state_list, trans_dict):
     """
         Returns list of state **instances** that are unreachable.
 
@@ -924,11 +924,11 @@ def _find_unreachable_states(top_state, flat_state_list, trans_dict):
             [visit(st, visited) for st in state.states]
         # all state's parents are reachable
         # visit transition targets going out of every parent state
-        for parent in _get_path_from_root(state):
+        for parent in get_path_from_root(state):
             visit(parent, visited)
         # visit transition targets going out of current state
         for tran in trans_dict.get(state.sig, {}).values():
-            target_state = _get_state_by_sig(tran.target, flat_state_list)
+            target_state = get_state_by_sig(tran.target, flat_state_list)
             if target_state is not None:  # nonexistent state in trans_dict
                 visit(target_state, visited)  # will be checked by another func
         return visited
