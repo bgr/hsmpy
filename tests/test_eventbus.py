@@ -13,7 +13,7 @@ class PingEvent(Event): pass
 class AnotherEvent(Event): pass
 
 
-class Test_single_listener(object):
+class Test_single_listener:
 
     def setup_class(self):
         self.eb = EventBus()
@@ -37,7 +37,7 @@ class Test_single_listener(object):
         assert self.obj.x == 6  # unchanged
 
 
-class Test_multiple_listeners(object):
+class Test_multiple_listeners:
 
     def setup_class(self):
         self.eb = EventBus()
@@ -86,7 +86,7 @@ class Test_multiple_listeners(object):
         assert self.you.x == 4
 
 
-class Test_raising_errors(object):
+class Test_raising_errors:
 
     def setup_class(self):
         self.eb = EventBus()
@@ -117,7 +117,7 @@ class Test_raising_errors(object):
             self.eb.unregister(PingEvent, self.hey.increment)
 
 
-class Test_event_queuing(object):
+class Test_event_queuing:
     def setup_class(self):
         self.eb = EventBus()
 
@@ -154,3 +154,62 @@ class Test_event_queuing(object):
         assert self.x == 3
         assert self.first_visited == 'yes'
         assert self.second_visited == 'yes'
+
+
+
+class Test_callback_order:
+    def test_order_after_dispatc(self):
+        # after event is dispatched, log_after must be equal to log_before,
+        # otherwise queuing is not correct
+        self.log_before = []
+        self.log_after = []
+        self.eb = EventBus()
+
+        class E1(Event): pass
+        class E2(Event): pass
+        class E3(Event): pass
+        class E4(Event): pass
+        class E5(Event): pass
+        class E6(Event): pass
+
+        def cb1(evt):
+            self.log_before += [1]
+            self.eb.dispatch(E2())
+            self.eb.dispatch(E3())
+            self.log_after += [1]
+
+        def cb2(evt):
+            self.log_before += [2]
+            self.eb.dispatch(E4())
+            self.eb.dispatch(E5())
+            self.eb.dispatch(E6())
+            self.log_after += [2]
+
+        def cb3(evt):
+            self.log_before += [3]
+            self.log_after += [3]
+
+        def cb4(evt):
+            self.log_before += [4]
+            self.log_after += [4]
+
+        def cb5(evt):
+            self.log_before += [5]
+            self.log_after += [5]
+
+        def cb6(evt):
+            self.log_before += [6]
+            self.log_after += [6]
+
+        self.eb.register(E1, cb1)
+        self.eb.register(E2, cb2)
+        self.eb.register(E3, cb3)
+        self.eb.register(E4, cb4)
+        self.eb.register(E5, cb5)
+        self.eb.register(E6, cb6)
+
+        assert self.log_before == []
+        assert self.log_after == []
+        self.eb.dispatch(E1())
+        assert self.log_before == [1, 2, 3, 4, 5, 6]
+        assert self.log_after == [1, 2, 3, 4, 5, 6]
