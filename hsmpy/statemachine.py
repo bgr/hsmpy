@@ -557,7 +557,7 @@ def get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
     # TODO: docstring
     resp_state, tran = get_state_response(src_state, event, trans_dict, hsm)
 
-    action_name = lambda st, descr: '{0}-{1}'.format(st.name, descr)
+    act_name = lambda st, descr: '{0}-{1}'.format(st.name, descr)
     evt_name = event.__class__.__name__
 
     # nothing happens if no state responds to event
@@ -565,7 +565,7 @@ def get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
         return []
 
     # wrap transition into Action
-    tran_action = Action(action_name(resp_state, evt_name), tran.action)
+    tran_action = Action(act_name(resp_state, evt_name), tran.action)
 
     # in case of internal transition just perform the transition action
     # do not add any exit actions, and don't change the state (resulting state
@@ -601,8 +601,8 @@ def get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
         entries += target_state.states
 
     # wrap in Action objects
-    exit_acts = [Action(action_name(st, 'exit'), st.exit) for st in exits]
-    entry_acts = [Action(action_name(st, 'entry'), st.enter) for st in entries]
+    exit_acts = [Action(act_name(st, 'exit'), st._exit) for st in exits]
+    entry_acts = [Action(act_name(st, 'entry'), st._enter) for st in entries]
     # original transition action must come before any entry action
     entry_acts = [tran_action] + entry_acts
 
@@ -876,7 +876,7 @@ def find_invalid_initial_transitions(flat_state_list, trans_dict):
     return [st for st in composites if is_local(init_tran_of(st))
             or init_tran_of(st).target == st.sig
             or st not in get_path_from_root(init_tran_target_of(st))
-            or init_tran_of(st).guard(None, None) is not True]
+            or not init_tran_of(st).guard(None, None)]
 
 
 def find_invalid_local_transitions(flat_state_list, trans_dict):

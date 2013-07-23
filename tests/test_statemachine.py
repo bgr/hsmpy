@@ -1,7 +1,8 @@
 from hsmpy import HSM, State, EventBus, Event, Initial
 from hsmpy import Transition as T
+from hsmpy import InternalTransition as Internal
 from predefined_machines import make_miro_machine
-from predefined_machines import A, C, D, E, G, I
+from predefined_machines import A, B, C, D, E, G, I
 from predefined_machines import LoggingState
 
 
@@ -739,3 +740,154 @@ class Test_miro_machine(object):
             's211_enter': 3,
             # no change
         }
+
+
+class Test_internal_transitions:
+    def setup_class(self):
+        hsmdata = {
+            'top_internal_A': 0,
+            'top_internal_B': 0,
+            'top_internal_C': 0,
+            'idle_internal_A': 0,
+            'idle_internal_B': 0,
+            'working_internal_A': 0,
+            'working_internal_B': 0,
+            'leaf_internal_A': 0,
+        }
+
+        states = {
+            'top': State(states={
+                'idle': State(),
+                'working': State({
+                    'leaf': State(),
+                })
+            })
+        }
+
+        trans = {
+            'top': {
+                Initial: T('idle'),
+                A: Internal(action=get_callback('top_internal_A')),
+                B: Internal(action=get_callback('top_internal_B')),
+                C: Internal(action=get_callback('top_internal_C')),
+            },
+            'idle': {
+                Step: T('leaf'),
+                A: Internal(action=get_callback('idle_internal_A')),
+                B: Internal(action=get_callback('idle_internal_B')),
+            },
+            'working': {
+                Initial: T('leaf'),
+                A: Internal(action=get_callback('working_internal_A')),
+                B: Internal(action=get_callback('working_internal_B')),
+            },
+            'leaf': {
+                A: Internal(action=get_callback('leaf_internal_A')),
+            },
+        }
+
+        self.eb = EventBus()
+        self.hsm = HSM(states, trans)
+        self.hsm.data = hsmdata
+
+    def test_in_idle_after_starting(self):
+        self.hsm.start(self.eb)
+        assert list(self.hsm.current_state_set)[0].name == 'idle'
+
+    def test_idle_responds_to_A(self):
+        self.eb.dispatch(A())
+        assert self.hsm.data == {
+            'top_internal_A': 0,
+            'top_internal_B': 0,
+            'top_internal_C': 0,
+            'idle_internal_A': 1,
+            'idle_internal_B': 0,
+            'working_internal_A': 0,
+            'working_internal_B': 0,
+            'leaf_internal_A': 0,
+        }
+        assert list(self.hsm.current_state_set)[0].name == 'idle'
+
+    def test_idle_responds_to_B(self):
+        self.eb.dispatch(B())
+        assert self.hsm.data == {
+            'top_internal_A': 0,
+            'top_internal_B': 0,
+            'top_internal_C': 0,
+            'idle_internal_A': 1,
+            'idle_internal_B': 1,
+            'working_internal_A': 0,
+            'working_internal_B': 0,
+            'leaf_internal_A': 0,
+        }
+        assert list(self.hsm.current_state_set)[0].name == 'idle'
+
+    def test_top_responds_to_C_from_idle(self):
+        self.eb.dispatch(C())
+        assert self.hsm.data == {
+            'top_internal_A': 0,
+            'top_internal_B': 0,
+            'top_internal_C': 1,
+            'idle_internal_A': 1,
+            'idle_internal_B': 1,
+            'working_internal_A': 0,
+            'working_internal_B': 0,
+            'leaf_internal_A': 0,
+        }
+        assert list(self.hsm.current_state_set)[0].name == 'idle'
+
+    def test_in_leaf_after_dispatching_Step(self):
+        self.eb.dispatch(Step())
+        assert list(self.hsm.current_state_set)[0].name == 'leaf'
+        assert self.hsm.data == {  # nothing changed
+            'top_internal_A': 0,
+            'top_internal_B': 0,
+            'top_internal_C': 1,
+            'idle_internal_A': 1,
+            'idle_internal_B': 1,
+            'working_internal_A': 0,
+            'working_internal_B': 0,
+            'leaf_internal_A': 0,
+        }
+
+    def test_leaf_responds_to_A(self):
+        self.eb.dispatch(A())
+        assert self.hsm.data == {
+            'top_internal_A': 0,
+            'top_internal_B': 0,
+            'top_internal_C': 1,
+            'idle_internal_A': 1,
+            'idle_internal_B': 1,
+            'working_internal_A': 0,
+            'working_internal_B': 0,
+            'leaf_internal_A': 1,
+        }
+        assert list(self.hsm.current_state_set)[0].name == 'leaf'
+
+    def test_working_responds_to_B_from_leaf(self):
+        self.eb.dispatch(B())
+        assert self.hsm.data == {
+            'top_internal_A': 0,
+            'top_internal_B': 0,
+            'top_internal_C': 1,
+            'idle_internal_A': 1,
+            'idle_internal_B': 1,
+            'working_internal_A': 0,
+            'working_internal_B': 1,
+            'leaf_internal_A': 1,
+        }
+        assert list(self.hsm.current_state_set)[0].name == 'leaf'
+
+    def test_top_responds_to_C_from_leaf(self):
+        self.eb.dispatch(C())
+        assert self.hsm.data == {
+            'top_internal_A': 0,
+            'top_internal_B': 0,
+            'top_internal_C': 2,
+            'idle_internal_A': 1,
+            'idle_internal_B': 1,
+            'working_internal_A': 0,
+            'working_internal_B': 1,
+            'leaf_internal_A': 1,
+        }
+        assert list(self.hsm.current_state_set)[0].name == 'leaf'
