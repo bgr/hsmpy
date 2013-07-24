@@ -1,10 +1,8 @@
 import pytest
 from hsmpy import HSM, EventBus
-from hsmpy.statemachine import get_responses, get_state_by_sig
-from hsmpy import Initial
-from hsmpy import Transition as T
-from hsmpy import LocalTransition as Local
-from predefined_machines import make_submachines_machine, A, B, F, TERMINATE
+from hsmpy.util import get_responses, get_state_by_sig
+from predefined_machines import (A, B, F, TERMINATE,
+                                 make_submachines_machine)
 
 
 
@@ -110,11 +108,17 @@ class Test_get_response_submachines(object):
             assert resps == []
 
 
-class Test_submachines_working(object):
+class Test_all_submachines_respond_to_event(object):
     def setup_class(self):
         states, trans = make_submachines_machine(use_logging=True)
         self.hsm = HSM(states, trans)
         self.eb = EventBus()
+
+    def assert_names(self, *state_names):
+        hsm_names = [st.name for st in self.hsm.current_state_set]
+        hsm_names_set = set(hsm_names)
+        assert len(hsm_names) == len(hsm_names_set)
+        assert hsm_names_set == set(state_names)
 
     def test_enters_submachines_after_start(self):
         self.hsm.start(self.eb)
@@ -124,6 +128,7 @@ class Test_submachines_working(object):
             'left[0].top_enter': 1,
             'left[0].start_enter': 1,
         }
+        self.assert_names('left[0].start')
 
     def test_event_A_captured_by_left_submachine(self):
         self.eb.dispatch(A())
@@ -136,6 +141,7 @@ class Test_submachines_working(object):
             'left[0].start_exit': 1,
             'left[0].right_enter': 1,
         }
+        self.assert_names('left[0].right')
 
     def test_terminate_left_submachine(self):
         self.eb.dispatch(TERMINATE())
@@ -150,6 +156,7 @@ class Test_submachines_working(object):
             'left[0].right_exit': 1,
             'left[0].final_enter': 1,
         }
+        self.assert_names('left[0].final')
 
     def test_event_A_transitions_to_right(self):
         self.eb.dispatch(A())
@@ -173,6 +180,7 @@ class Test_submachines_working(object):
             'subs[1].top_enter': 1,
             'subs[1].start_enter': 1,
         }
+        self.assert_names('subs[0].start', 'subs[1].start')
 
     def test_event_A_captured_by_right_submachines(self):
         self.eb.dispatch(A())
@@ -200,6 +208,7 @@ class Test_submachines_working(object):
             'subs[1].start_exit': 1,
             'subs[1].right_enter': 1,
         }
+        self.assert_names('subs[0].right', 'subs[1].right')
 
     def test_event_A_captured_by_right_submachines_again(self):
         self.eb.dispatch(A())
@@ -229,6 +238,7 @@ class Test_submachines_working(object):
             'subs[1].right_exit': 1,
             'subs[1].start_enter': 2,
         }
+        self.assert_names('subs[0].start', 'subs[1].start')
 
     def test_terminate_right_submachine(self):
         self.eb.dispatch(TERMINATE())
@@ -260,6 +270,7 @@ class Test_submachines_working(object):
             'subs[1].start_exit': 2,
             'subs[1].final_enter': 1,
         }
+        self.assert_names('subs[0].final', 'subs[1].final')
 
     def test_event_A_transitions_to_dumb(self):
         self.eb.dispatch(A())
@@ -297,6 +308,7 @@ class Test_submachines_working(object):
             'subs_exit': 1,
             'dumb_enter': 1,
         }
+        self.assert_names('dumb')
 
     def test_event_A_transitions_to_left_again(self):
         self.eb.dispatch(A())
@@ -336,3 +348,4 @@ class Test_submachines_working(object):
             'left[0].top_enter': 2,
             'left[0].start_enter': 2,
         }
+        self.assert_names('left[0].start')

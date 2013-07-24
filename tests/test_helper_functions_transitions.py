@@ -1,7 +1,6 @@
 import pytest
 from hsmpy import State, HSM, Event, Initial
-from hsmpy.statemachine import (get_merged_sequences, get_responses,
-                                get_state_by_sig)
+from hsmpy.util import get_merged_sequences, get_responses, get_state_by_sig
 from predefined_machines import make_miro_machine, make_nested_machine
 from predefined_machines import (A, B, C, D, E, F, G, H, I, TERMINATE, AB_ex,
                                  AC_ex, BC_ex, AB_loc, AC_loc, BC_loc, BA_ex,
@@ -57,7 +56,7 @@ class Test_get_response_guards_irrelevant(object):
         state_set = set([from_state])
 
         responses = get_responses(state_set, Event(),
-                                   self.hsm.trans, mock_hsm)
+                                  self.hsm.trans, mock_hsm)
         assert len(responses) == 1  # since there are no submachines
 
         _, resp_state, tran = responses[0]
@@ -114,7 +113,7 @@ class Test_get_response_considering_guards(object):
         state_set = set([from_state])
 
         responses = get_responses(state_set, Event(),
-                                   self.hsm.trans, mock_hsm)
+                                  self.hsm.trans, mock_hsm)
 
         if expected_responding_state is None:
             assert responses == []

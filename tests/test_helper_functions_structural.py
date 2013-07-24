@@ -1,21 +1,20 @@
 import pytest
-from hsmpy.statemachine import (get_path,
-                                get_path_from_root,
-                                get_common_parent,
-                                get_events,
-                                get_state_by_sig,
-                                get_incoming_transitions,
-                                find_duplicate_sigs,
-                                find_nonexistent_transition_sources,
-                                find_nonexistent_transition_targets,
-                                find_missing_initial_transitions,
-                                find_invalid_initial_transitions,
-                                find_invalid_local_transitions,
-                                find_unreachable_states,
-                                flatten,
-                                duplicates,
-                                reformat,
-                                )
+from hsmpy.util import (get_path,
+                        get_path_from_root,
+                        get_common_parent,
+                        get_events,
+                        get_state_by_sig,
+                        get_incoming_transitions,
+                        flatten,
+                        duplicates,
+                        reformat)
+from hsmpy.validation import (find_duplicate_sigs,
+                              find_nonexistent_transition_sources,
+                              find_nonexistent_transition_targets,
+                              find_missing_initial_transitions,
+                              find_invalid_initial_transitions,
+                              find_invalid_local_transitions,
+                              find_unreachable_states)
 
 from hsmpy import Initial, Event
 from hsmpy import InternalTransition as Internal
@@ -57,13 +56,13 @@ class Test_get_path(object):
         assert get_path(middle, root) == ([middle], root, [])
         assert get_path(root, middle) == ([], root, [middle])
         assert get_path(middle_A, left_A) == ([middle_A, middle],
-                                               root, [left, left_A])
+                                              root, [left, left_A])
         assert get_path(right_A_1, left) == ([right_A_1, right_A, right],
-                                              root, [left])
+                                             root, [left])
         assert get_path(right_A_2, left_B) == ([right_A_2, right_A, right],
-                                                root, [left, left_B])
+                                               root, [left, left_B])
         assert get_path(left_B, right_A_2) == ([left_B, left], root,
-                                                [right, right_A, right_A_2])
+                                               [right, right_A, right_A_2])
         assert get_path(right_A, root) == ([right_A, right], root, [])
         assert get_path(root, right_A) == ([], root, [right, right_A])
 
@@ -157,9 +156,9 @@ class Test_get_path_from_root(object):
         assert get_path_from_root(right_A) == [root, right, right_A]
         assert get_path_from_root(right_B) == [root, right, right_B]
         assert get_path_from_root(right_A_1) == [root, right, right_A,
-                                                  right_A_1]
+                                                 right_A_1]
         assert get_path_from_root(right_A_2) == [root, right, right_A,
-                                                  right_A_2]
+                                                 right_A_2]
 
     def test_with_HSM_instance(self):
         states = {
@@ -430,7 +429,7 @@ class Test_structural_analysis(object):
         def f(name, include_loops):
             res = [(src[-1], evt) for src, evt, _tran
                    in get_incoming_transitions((name,), self.hsm.trans,
-                                                include_loops)]
+                                               include_loops)]
             return sorted(res)
 
         assert f('top', False) == sorted([
@@ -456,13 +455,13 @@ class Test_structural_analysis(object):
 
     def test_find_nonexistent_transition_sources(self):
         t = find_nonexistent_transition_sources(self.hsm.flattened,
-                                                 self.hsm.trans)
+                                                self.hsm.trans)
         assert sorted(t) == sorted([('bad_source_1',), ('bad_source_2',)])
 
 
     def test_find_nonexistent_transition_targets(self):
         t = find_nonexistent_transition_targets(self.hsm.flattened,
-                                                 self.hsm.trans)
+                                                self.hsm.trans)
         assert sorted(t) == sorted([('bad_target_1',), ('bad_target_2',)])
 
 
@@ -481,7 +480,7 @@ class Test_structural_analysis(object):
     def test_find_invalid_local_transitions(self):
         res_tuples = [(src[-1], evt, tran[-1]) for src, evt, tran
                       in find_invalid_local_transitions(self.hsm.flattened,
-                                                         self.hsm.trans)]
+                                                        self.hsm.trans)]
         assert sorted(res_tuples) == sorted([
             ('left_B', 'A', 'left_A'),
             ('right', 'A', 'left_A'),
@@ -492,8 +491,8 @@ class Test_structural_analysis(object):
     def test_find_unreachable_states(self):
         names = [st.name  # first element of tuple
                  for st in find_unreachable_states(self.hsm.root,
-                                                    self.hsm.flattened,
-                                                    self.hsm.trans)]
+                                                   self.hsm.flattened,
+                                                   self.hsm.trans)]
         expected = ['middle', 'mid_A', 'right_A', 'right_B', 'bad', 'bad1',
                     'ortho_unreachable', 'ortho_unreachable[0].subunr1',
                     'ortho_unreachable[1].subunr2', 'ortho[1].unr']
