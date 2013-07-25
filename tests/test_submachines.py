@@ -2,7 +2,8 @@ import pytest
 from hsmpy import HSM, EventBus
 from hsmpy.util import get_responses, get_state_by_sig
 from predefined_machines import (A, B, F, TERMINATE,
-                                 make_submachines_machine)
+                                 make_submachines_machine,
+                                 make_subachines_async_machine)
 
 
 
@@ -107,6 +108,46 @@ class Test_get_response_submachines(object):
         else:
             assert resps == []
 
+
+#responding_submachines_async = [
+#    # element format:
+#    # ( [list, of, states], EVENT,
+#    #   [list, of, responding, states],
+#    #   [list, of, transition, targets] )
+
+#    # 'left's submachine is in 'start' state - responds to A and TERMINATE
+#    ([('subs', 0, 'left'), ('subs', 1, 'left')], A,
+#     [('subs', 0, 'left')],
+#     [('subs', 0, 'final')]),
+
+
+#class Test_get_response_submachines(object):
+
+#    def setup_class(self):
+#        states, trans = make_submachines_machine(use_logging=False)
+#        self.hsm = HSM(states, trans)
+
+#    @pytest.mark.parametrize(('from_states', 'Event',
+#                              'expected_responding_states',
+#                              'expected_transition_targets'),
+#                             responding_submachines)
+#    def test_run(self, from_states, Event, expected_responding_states,
+#                 expected_transition_targets):
+#        starting_states = [get_state_by_sig(sig, self.hsm.flattened)
+#                           for sig in from_states]
+#        resps = get_responses(starting_states, Event(), self.hsm.trans, None)
+
+#        if expected_responding_states or expected_transition_targets:
+#            _, resp_states, trans = zip(*resps)
+#            assert len(resp_states) == len(expected_responding_states)
+#            resp_sigs = set([st.sig for st in resp_states])
+#            assert resp_sigs == set(expected_responding_states)
+
+#            assert len(trans) == len(expected_transition_targets)
+#            target_ids = set([tr.target for tr in trans])
+#            assert target_ids == set(expected_transition_targets)
+#        else:
+#            assert resps == []
 
 class Test_all_submachines_respond_to_event(object):
     def setup_class(self):
@@ -349,3 +390,63 @@ class Test_all_submachines_respond_to_event(object):
             'left[0].start_enter': 2,
         }
         self.assert_names('left[0].start')
+
+
+# make sure that submachine remains in HSM state set even if it didin't
+# respond to the event
+
+class Test_submachines_some_respond(object):
+    def setup_class(self):
+        states, trans = make_subachines_async_machine(use_logging=True)
+        self.hsm = HSM(states, trans)
+        self.eb = EventBus()
+
+    def assert_names(self, *state_names):
+        hsm_names = [st.name for st in self.hsm.current_state_set]
+        hsm_names_set = set(hsm_names)
+        assert len(hsm_names) == len(hsm_names_set)
+        assert hsm_names_set == set(state_names)
+
+    def test_enters_submachines_after_start(self):
+        self.hsm.start(self.eb)
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'subs_enter': 1,
+            'subs[0].top_enter': 1,
+            'subs[0].left_enter': 1,
+            'subs[1].top_enter': 1,
+            'subs[1].left_enter': 1,
+        }
+        self.assert_names('subs[0].left', 'subs[1].left')
+
+    def test_first_responds_to_A(self):
+        self.eb.dispatch(A())
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'subs_enter': 1,
+            'subs[0].top_enter': 1,
+            'subs[0].left_enter': 1,
+            'subs[1].top_enter': 1,
+            'subs[1].left_enter': 1,
+
+            'subs[0].left_exit': 1,
+            'subs[0].right_enter': 1,
+        }
+        self.assert_names('subs[0].right', 'subs[1].left')
+
+    def test_second_responds_to_B(self):
+        self.eb.dispatch(B())
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'subs_enter': 1,
+            'subs[0].top_enter': 1,
+            'subs[0].left_enter': 1,
+            'subs[1].top_enter': 1,
+            'subs[1].left_enter': 1,
+            'subs[0].left_exit': 1,
+            'subs[0].right_enter': 1,
+
+            'subs[1].left_exit': 1,
+            'subs[1].right_enter': 1,
+        }
+        self.assert_names('subs[0].right', 'subs[1].right')

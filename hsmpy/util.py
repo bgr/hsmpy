@@ -4,6 +4,116 @@ from copy import copy
 import statemachine as sm
 
 
+# TODO: test
+def get_response(active_branches, event, trans_map):
+    """ Returns list of tuples (responding_subtree, transition), where
+        *responding_subtree* is a tuple describing the subtree with root node
+        being the state that responded to event. For info about that tuple and
+        *active_branches* see function *get_entry_branches*.
+    """
+    resps = []
+    # go all the way to the leaf states to find deepest states that respond
+    for branch in active_branches:
+        state, subbranches = branch
+        sub_resps = get_response(subbranches, event, trans_map)
+        # see if at least one subbranch responded
+        if sub_resps:
+            resps += sub_resps
+            continue
+        # maybe this state can respond since its substates didn't
+        tran = trans_map[state.sig].get(event.__class__)
+        if tran:
+            resps += [ (branch, tran) ]
+            continue
+    return resps
+
+
+#def build_branch(states):
+#    """ Builds a linear tree branch - returns tuple (state, subbranches_list)
+#        from the given list of *states* by creating the node tuple out of each
+#        state and nesting the subbranch described by its successor element
+#        into its *subbranches_list*.
+#    """
+#    if states:
+#        return [ (states[0], build_branch(states[1:])) ]
+#    return []
+
+
+# TODO: test
+def enter_subtree(state, trans_map, flat_states):
+    """ Returns tree-like structure whose root is described by the tuple:
+            (state, subbranches)
+
+        That structure is used to describe a subset of states in which the HSM
+        will be after entering *state* and its nested states by following
+        initial transitions.
+
+        * In case of leaf state, *subbranches* will be an empty list.
+        * In case of composite state, *subbranches* will contain single tuple
+          since initial transition must be present and its target is a single
+          state.
+        * In case of orthogonal state, *subbranches* will contain multiple
+          tuples - one for each submachine since HSM is in all of those states
+          simultaneously
+    """
+    if state.kind == 'leaf':
+        return (state, [])
+    if state.kind == 'composite':
+        init_tran = trans_map[state.sig][sm.Initial]
+        target_state = get_state_by_sig(init_tran.target, flat_states)
+        # states to enter when following initial transition that points to a
+        # nested state that is not immediate child. it's not done recursively
+        # since it should ignore all nested initial transitions until target.
+        # excluding last elem (target_state) since it'll be added recursively
+        to_enter = get_path(state, target_state)[:-1]
+        # transition might end at another composite/orthogonal, recursively
+        # create the subbranch
+        subtree = enter_subtree(target_state, trans_map, flat_states)
+        # lay out the sequence of tuples to be linked together, starting with
+        # current state as the root, through entered states and finally subtree
+        detached = [(state, [])] + [(st, []) for st in to_enter] + [subtree]
+        # link them by going through the list reversed and making each state a
+        # subbranch of the next one
+        link = lambda child, parent: (parent[0], [child])
+        return reduce(link, reversed(detached))
+    if state.kind == 'orthogonal':
+        subbranches = [enter_subtree(st, trans_map, flat_states)
+                       for st in state.states]
+        return (state, subbranches)
+    assert False, "this cannot happen"
+
+
+# TODO: test
+def tree_detach(root, state_to_detach):
+    """ Detaches the subtree starting at the node containing *state_to_detach*
+        and returns resulting tree.
+    """
+    state, subbranches = root
+    if state == state_to_detach:
+        return []
+    return (state, [tree_detach(br, state_to_detach) for br in subbranches])
+
+
+def tree_attach(leaf, subtree_to_attach):
+    """ Detaches the subtree starting at the node containing *state_to_detach*
+        and returns resulting tree.
+    """
+    state, subbranches = root
+    if state == state_to_detach:
+        return []
+    return (state, [tree_detach(br, state_to_detach) for br in subbranches])
+
+
+# TODO: test
+def get_transition_sequences(active_branches, event, trans_map, flat_states):
+    # get all subtrees that respond to event transitions to follow
+    resps = get_responses(active_branches, event, trans_map)
+    # detach each subtree from active_branches tree
+    ripper = lambda tree, subtree: tree_detach(tree, subtree[0])
+    poor_tree = reduce(states_to_detach, ripper, active_branches)
+
+
+
 def flatten(container):
     if isinstance(container, list):
         return [sub for cont_elem in container for sub in flatten(cont_elem)]

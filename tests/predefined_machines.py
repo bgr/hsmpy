@@ -266,3 +266,55 @@ def make_submachines_machine(use_logging):
     }
 
     return (states, trans)
+
+
+
+def make_subachines_async_machine(use_logging):
+    """ Machine with two submachines, where one responds to A, and other
+        responds to B.
+    """
+
+    Cls = LoggingState if use_logging else State
+
+    sub_states = {
+        'top': Cls({
+            'left': Cls(),
+            'right': Cls(),
+        })
+    }
+
+    sub_1_trans = {
+        'top': {
+            Initial: T('left'),
+        },
+        'left': {
+            A: T('right'),
+        },
+    }
+
+    sub_2_trans = {
+        'top': {
+            Initial: T('left'),
+        },
+        'left': {
+            B: T('right'),
+        },
+    }
+
+
+    states = {
+        'top': Cls({
+            'subs': Cls([
+                (sub_states, sub_1_trans),
+                (sub_states, sub_2_trans),
+            ])
+        })
+    }
+
+    trans = {
+        'top': {
+            Initial: T('subs'),
+        }
+    }
+
+    return (states, trans)
