@@ -1,153 +1,8 @@
-import pytest
 from hsmpy import HSM, EventBus
-from hsmpy.util import get_responses, get_state_by_sig
-from predefined_machines import (A, B, F, TERMINATE,
-                                 make_submachines_machine,
-                                 make_subachines_async_machine)
+from reusable import (A, B, TERMINATE,
+                      make_submachines_machine,
+                      make_submachines_async_machine)
 
-
-
-
-# collective state description format:
-# state_descr = state_name:str | submachines_state:tuple
-# submachines_state = (state_name, state_descr, state_descr, ...)
-
-# single state addressing format:
-# state_addr = state_name:str | submachine_addr:tuple
-# submachine_addr = (state_name, index, addr)
-
-responding_submachines = [
-    # element format:
-    # ( [list, of, states], EVENT,
-    #   [list, of, responding, states],
-    #   [list, of, transition, targets] )
-
-    # 'left's submachine is in 'start' state - responds to A and TERMINATE
-    ([('left', 0, 'start')], TERMINATE,
-     [('left', 0, 'top')],
-     [('left', 0, 'final')]),
-
-    ([('left', 0, 'start')], A,
-     [('left', 0, 'start')],
-     [('left', 0, 'right')]),
-
-    # 'left's submachine is in 'right' state - ditto
-    ([('left', 0, 'right')], TERMINATE,
-     [('left', 0, 'top')],
-     [('left', 0, 'final')]),
-
-    ([('left', 0, 'right')], A,
-     [('left', 0, 'right')],
-     [('left', 0, 'start')]),
-
-    # 'left's submachine is in 'final' state - doesn't respond to A
-    ([('left', 0, 'final')], A,
-     [('left',)],  # toplevel 'left' responds, transitions to 'right'
-     [('right',)]),
-
-    ([('left', 0, 'start')], B,  # only toplevel 'left' responds to B
-     [('left',)],
-     [('right',)]),
-
-    ([('left', 0, 'start')], F,  # nobody responds to F
-     [],
-     []),
-
-    # 'subs' has two submachines
-    ([('subs', 0, 'start'), ('subs', 1, 'start')], A,
-     [('subs', 0, 'start'), ('subs', 1, 'start')],  # states that responded
-     [('subs', 0, 'right'), ('subs', 1, 'right')]),  # states to transition to
-
-    ([('subs', 0, 'start'), ('subs', 1, 'right')], A,
-     [('subs', 0, 'start'), ('subs', 1, 'right')],
-     [('subs', 0, 'right'), ('subs', 1, 'start')]),
-
-    ([('subs', 0, 'start'), ('subs', 1, 'final')], A,
-     [('subs', 0, 'start')],  # only first responds
-     [('subs', 0, 'right')]),
-
-    ([('subs', 0, 'final'), ('subs', 1, 'right')], A,
-     [('subs', 1, 'right')],  # only second responds
-     [('subs', 1, 'start')]),
-
-    ([('subs', 0, 'final'), ('subs', 1, 'final')], A,
-     [('subs',)],  # submachines don't respond, 'subs' transitions to 'dumb'
-     [('dumb',)]),
-
-    ([('dumb',)], A,
-     [('right',)],
-     [('left',)]),
-]
-
-
-class Test_get_response_submachines(object):
-
-    def setup_class(self):
-        states, trans = make_submachines_machine(use_logging=False)
-        self.hsm = HSM(states, trans)
-
-    @pytest.mark.parametrize(('from_states', 'Event',
-                              'expected_responding_states',
-                              'expected_transition_targets'),
-                             responding_submachines)
-    def test_run(self, from_states, Event, expected_responding_states,
-                 expected_transition_targets):
-        starting_states = [get_state_by_sig(sig, self.hsm.flattened)
-                           for sig in from_states]
-        resps = get_responses(starting_states, Event(), self.hsm.trans, None)
-
-        if expected_responding_states or expected_transition_targets:
-            _, resp_states, trans = zip(*resps)
-            assert len(resp_states) == len(expected_responding_states)
-            resp_sigs = set([st.sig for st in resp_states])
-            assert resp_sigs == set(expected_responding_states)
-
-            assert len(trans) == len(expected_transition_targets)
-            target_ids = set([tr.target for tr in trans])
-            assert target_ids == set(expected_transition_targets)
-        else:
-            assert resps == []
-
-
-#responding_submachines_async = [
-#    # element format:
-#    # ( [list, of, states], EVENT,
-#    #   [list, of, responding, states],
-#    #   [list, of, transition, targets] )
-
-#    # 'left's submachine is in 'start' state - responds to A and TERMINATE
-#    ([('subs', 0, 'left'), ('subs', 1, 'left')], A,
-#     [('subs', 0, 'left')],
-#     [('subs', 0, 'final')]),
-
-
-#class Test_get_response_submachines(object):
-
-#    def setup_class(self):
-#        states, trans = make_submachines_machine(use_logging=False)
-#        self.hsm = HSM(states, trans)
-
-#    @pytest.mark.parametrize(('from_states', 'Event',
-#                              'expected_responding_states',
-#                              'expected_transition_targets'),
-#                             responding_submachines)
-#    def test_run(self, from_states, Event, expected_responding_states,
-#                 expected_transition_targets):
-#        starting_states = [get_state_by_sig(sig, self.hsm.flattened)
-#                           for sig in from_states]
-#        resps = get_responses(starting_states, Event(), self.hsm.trans, None)
-
-#        if expected_responding_states or expected_transition_targets:
-#            _, resp_states, trans = zip(*resps)
-#            assert len(resp_states) == len(expected_responding_states)
-#            resp_sigs = set([st.sig for st in resp_states])
-#            assert resp_sigs == set(expected_responding_states)
-
-#            assert len(trans) == len(expected_transition_targets)
-#            target_ids = set([tr.target for tr in trans])
-#            assert target_ids == set(expected_transition_targets)
-#        else:
-#            assert resps == []
 
 class Test_all_submachines_respond_to_event(object):
     def setup_class(self):
@@ -397,7 +252,7 @@ class Test_all_submachines_respond_to_event(object):
 
 class Test_submachines_some_respond(object):
     def setup_class(self):
-        states, trans = make_subachines_async_machine(use_logging=True)
+        states, trans = make_submachines_async_machine(use_logging=True)
         self.hsm = HSM(states, trans)
         self.eb = EventBus()
 

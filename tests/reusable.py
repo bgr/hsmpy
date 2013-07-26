@@ -4,6 +4,30 @@ from hsmpy import InternalTransition as Internal
 from hsmpy import LocalTransition as Local
 
 
+def get_callback(key):
+    def func(evt, hsm):
+        hsm.data[key] += 1
+    return func
+
+
+def get_state(kind, name, states):
+    st = State(states)
+    st.name = name
+    st.kind = kind
+    return st
+
+orthogonal = lambda name, states: get_state('orthogonal', name, states)
+composite = lambda name, states: get_state('composite', name, states)
+leaf = lambda name: get_state('leaf', name, [])
+
+
+class MockHSM(object):
+    def __init__(self):
+        class Dump(object):
+            pass
+        self.data = Dump()
+
+
 class LoggingState(State):
     """Utility state that logs entries and exits into hsm.data._log dict."""
     def __init__(self, states=None, log_id=None):
@@ -269,7 +293,7 @@ def make_submachines_machine(use_logging):
 
 
 
-def make_subachines_async_machine(use_logging):
+def make_submachines_async_machine(use_logging):
     """ Machine with two submachines, where one responds to A, and other
         responds to B.
     """

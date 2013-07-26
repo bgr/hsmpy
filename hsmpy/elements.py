@@ -3,7 +3,7 @@ from collections import namedtuple
 from eventbus import Event
 from itertools import izip_longest
 import re
-from util import parse, get_events, get_merged_sequences
+from logic import parse, get_events, get_merged_sequences
 from validation import (find_unreachable_states,
                         find_duplicate_sigs,
                         find_nonexistent_transition_sources,
@@ -232,7 +232,7 @@ def InternalTransition(action=None, guard=None):
     return _make_tran(_Internal, None, action, guard)
 
 
-class Action(namedtuple('Action', 'name, function')):
+class Action(namedtuple('Action', 'name, function, item')):
     """
         Action's purpose is to adapt different functions into common
         interface required when executing transitions.
@@ -248,6 +248,8 @@ class Action(namedtuple('Action', 'name, function')):
         function : function/callable
             function to wrap, it must take two parameters: event instance
             and HSM instance
+        item : State or Transition
+            original object whose function is wrapped
     """
     def __call__(self, event, hsm):
         """Invokes the wrapped function"""

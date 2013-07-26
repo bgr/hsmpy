@@ -1,12 +1,12 @@
-import statemachine
+import elements
 import eventbus
 
-State = statemachine.State
-HSM = statemachine.HSM
-Transition = statemachine.Transition
-LocalTransition = statemachine.LocalTransition
-InternalTransition = statemachine.InternalTransition
-Initial = statemachine.Initial
+State = elements.State
+HSM = elements.HSM
+Transition = elements.Transition
+LocalTransition = elements.LocalTransition
+InternalTransition = elements.InternalTransition
+Initial = elements.Initial
 # aliases
 T = Transition
 Local = LocalTransition

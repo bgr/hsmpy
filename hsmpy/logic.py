@@ -1,12 +1,12 @@
 """Helper functions"""
 
 from copy import copy
-import statemachine as sm
+import elements as e
 
 
-exit_act = lambda st: sm.Action('{0}-exit'.format(st.name), st._exit, st)
-entry_act  = lambda st: sm.Action('{0}-entry'.format(st.name), st._enter, st)
-tran_act = lambda st, evt, tran: sm.Action('{0}-{1}'.format(st.name,
+exit_act = lambda st: e.Action('{0}-exit'.format(st.name), st._exit, st)
+entry_act  = lambda st: e.Action('{0}-entry'.format(st.name), st._enter, st)
+tran_act = lambda st, evt, tran: e.Action('{0}-{1}'.format(st.name,
                                            evt.__class__.__name__),
                                            tran.action, tran)
 
@@ -17,11 +17,11 @@ def get_merged_sequences(state_set, event, trans_map, flat_states, hsm):
         *event* instance. Returns tuple
             (exit_actions_list, entry_actions_list, new_state_set)
     """
-    # build tree of active states from current state set
-    tree = join_strands([get_path_from_root(st) for st in state_set])
+    # build tree of active states from current state set,
     # propagate event through tree and get responses
-    resps = get_responses(tree, event, trans_map, flat_states, hsm)
-    # get exit and entry sequence for each response
+    # and get exit and entry sequence for each response
+    tree = tree_from_state_set(state_set)
+    resps = get_responses(tree, event, trans_map, hsm)
     seqs = [get_response_sequence(resp, event, trans_map, flat_states)
             for resp in resps]
 
@@ -32,9 +32,9 @@ def get_merged_sequences(state_set, event, trans_map, flat_states, hsm):
     # filter out Actions that wrap transitions and extract states from
     # remaining Actions
     exited = set(
-        act.item for act in exit_actions if isinstance(act.item, sm.State))
+        act.item for act in exit_actions if isinstance(act.item, e.State))
     entered = set(
-        act.item for act in entry_actions if isinstance(act.item, sm.State))
+        act.item for act in entry_actions if isinstance(act.item, e.State))
 
     # remove exited states from current state set, and add entered states
     new_state_set = (state_set - exited) | entered
@@ -43,51 +43,58 @@ def get_merged_sequences(state_set, event, trans_map, flat_states, hsm):
 
 
 
-# TODO: test
-def join_strands(strand_paths):
-    """ Joins separate tree strands into one tree (initial *strand_paths*
-        should have a common top state in order to create a tree with single
-        root).
+def join_paths(paths):
+    """ Finds paths with common root node and joins them. In order to join all
+        paths into one tree, all *paths* should all have a common root state.
     """
     nodes = {}
-    # put all strands with common root state under same dict key
-    for state, subbranches in strand_paths:
+    # put all subpaths with common root state under same dict key
+    for path in paths:
+        if not path:
+            continue
+        state = path[0]
         if nodes.get(state) is None:
             nodes[state] = []
-        nodes[state] += subbranches
+        tail = path[1:]
+        if tail:
+            nodes[state] += [tail]
     # turn each dict key-value pair into (common_state, subbranches) tuple
-    return [(st, join_strands(subs)) for st, subs in nodes.items()]
+    return sorted([(el, join_paths(subs)) for el, subs in nodes.items()])
 
 
-# TODO: test
-def get_responses(root_branch_tuple, event, trans_map, hsm):
+def tree_from_state_set(state_set):
+    """Makes a tree by joining paths from root to each state in *state_set*."""
+    return join_paths([get_path_from_root(st) for st in state_set])
+
+
+def get_responses(tree_roots, event, trans_map, hsm):
     """ Returns list of tuples (responding_branch_tuple, transition).
         For description of *responding_branch_tuple* and *branch_tuple* see
         function *enter_subtree*.
     """
     resps = []
-    root, subbranches = root_branch_tuple
     # go all the way to the leaf states to find deepest states that respond
-    for subbranch in subbranches:
-        sub_resps = get_responses(subbranch, event, trans_map)
+    for node_tuple in tree_roots:
+        state, subtrees = node_tuple
+        sub_resps = get_responses(subtrees, event, trans_map, hsm)
         # see if at least one subbranch responded
         if sub_resps:
             resps += sub_resps
             continue
         # maybe this state can respond since its substates didn't
-        tran = trans_map[root.sig].get(event.__class__)
+        tran = trans_map.get(state.sig, {}).get(event.__class__)
         if tran and tran.guard(event, hsm):
-            resps += [ (root_branch_tuple, tran) ]
+            resps += [ (node_tuple, tran) ]
             continue
     return resps
 
 
-# TODO: test
-def postorder(node):
-    """Post-order traversal of tree defined by (state, subbranches) tuple."""
-    root_state, subbranches = node
-    sub = [st for subnode in subbranches for st in postorder(subnode)]
-    return sub + [root_state]
+def postorder(branches):
+    """ Returns flattened states of the tree gathered by post-order traversal
+        of *branches* defined by tuples (state, subbranches).
+    """
+    return [st for root, subtrees in branches
+            for st in postorder(subtrees) + [root]]
 
 
 # TODO: test
@@ -97,58 +104,60 @@ def get_response_sequence(response, event, trans_map, flat_states):
 
     transition_action = tran_act(resp_state, event, transition)
 
-    if isinstance(transition, sm._Internal):  # internal transition
+    if isinstance(transition, e._Internal):  # internal transition
         return ([], [transition_action])  # no exits, no state entries
 
     target_state = get_state_by_sig(transition.target, flat_states)
     # follow transition - perform exits from responding state to common parent
     # and then enter states from common parent towards transition target state
-    exits_to_parent, parent, entries_to_target = get_path(resp_state,
-                                                          target_state)
+    exits_till_parent, parent, entries_till_target = get_path(resp_state,
+                                                              target_state)
+
     # gather the states to be exited in subtree below responding state and
     # append states to be exited from responding state to common parent state,
     # and wrap them all into Actions
-    exits = [exit_act(st) for st in postorder(subtree) + exits_to_parent]
+    states_to_exit = postorder(subtree) + exits_till_parent
+
+    is_local = isinstance(transition, e._Local)
+
+    entries_from_target = entry_sequence(target_state, trans_map, flat_states)
+    if is_local and resp_state is not parent:  # don't re-enter parent
+        entries_from_target.pop(0)
+    elif not is_local and resp_state is parent:  # it's self-loop transition
+        states_to_exit.append(resp_state)
+
+    exits = [exit_act(st) for st in states_to_exit]
+
+    entries = [entry_act(st) for st in entries_till_target[:-1]]
+    entries += entries_from_target
 
     # transition that triggered all this is the first in entry list
-    entries = [transition_action]
-
-    # also exit and reenter parent state but only if transition was not local
-    if not isinstance(transition, sm._Local):
-        exits += [exit_act(parent)]
-        entries += [entry_act(parent)]
-
-    entries += [entry_act(st) for st in entries_to_target[:-1]]
-    entries += entry_sequence(target_state, trans_map, flat_states)
-
-    return (exits, entries)
+    return (exits, [transition_action] + entries)
 
 
-# TODO: test
 def entry_sequence(state, trans_map, flat_states):
-    """Returns list of Action instances."""
+    """Returns list of Actions to be performed when entering state."""
     if state.kind == 'leaf':
         return [entry_act(state)]
     if state.kind == 'composite':
-        init_tran = trans_map[state.sig][sm.Initial]
+        init_tran = trans_map[state.sig][e.Initial]
         target_state = get_state_by_sig(init_tran.target, flat_states)
         # states to enter when following initial transition that points to a
         # nested state that is not immediate child. it's not done recursively
         # since it should ignore all nested initial transitions until target.
         # excluding last elem (target_state) since it'll be added recursively
-        to_enter = get_path(state, target_state)[:-1]
+        _, _, to_enter = get_path(state, target_state)
         # transition might end at another composite/orthogonal, recursively
         # create the subbranch
         subtree_entries = entry_sequence(target_state, trans_map, flat_states)
         # wrap into actions and join
-        return ([entry_act(state), tran_act(state, sm.Initial(), init_tran)]
-                + [entry_act(st) for st in to_enter] + subtree_entries)
+        return ([entry_act(state), tran_act(state, e.Initial(), init_tran)]
+                + [entry_act(st) for st in to_enter[:-1]] + subtree_entries)
     if state.kind == 'orthogonal':
         # get action sequences for each submachine and flatten them in place
         sub_acts = [act
                     for st in state.states
-                    for seq in entry_sequence(st, trans_map, flat_states)
-                    for act in seq]
+                    for act in entry_sequence(st, trans_map, flat_states)]
         return [entry_act(state)] + sub_acts
     assert False, "this cannot happen"
 
@@ -158,7 +167,7 @@ def entry_sequence(state, trans_map, flat_states):
 def flatten(container):
     if isinstance(container, list):
         return [sub for cont_elem in container for sub in flatten(cont_elem)]
-    if isinstance(container, sm.State):
+    if isinstance(container, e.State):
         return [container] + flatten(container.states)
     return [container]  # any other object
 
@@ -320,12 +329,12 @@ def OLD_get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
         return []
 
     # wrap transition into Action
-    tran_action = sm.Action(act_name(resp_state, evt_name), tran.action)
+    tran_action = e.Action(act_name(resp_state, evt_name), tran.action)
 
     # in case of internal transition just perform the transition action
     # do not add any exit actions, and don't change the state (resulting state
     # is the source state)
-    if isinstance(tran, sm._Internal):
+    if isinstance(tran, e._Internal):
         return [ ([], [tran_action], [src_state]) ]
 
     target_state = get_state_by_sig(tran.target, flat_states)
@@ -341,8 +350,8 @@ def OLD_get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
     # from parent to child or child to parent just like LOCAL transition
     # but it also exits and reenters the parent state
     is_external_tran = (parent in [resp_state, target_state]
-                        and not isinstance(tran, sm._Local)
-                        and not isinstance(event, sm.Initial))
+                        and not isinstance(tran, e._Local)
+                        and not isinstance(event, e.Initial))
     state_to_add = []
     if resp_state is target_state:
         state_to_add = [resp_state]
@@ -356,8 +365,8 @@ def OLD_get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
         entries += target_state.states
 
     # wrap in Action objects
-    exit_acts = [sm.Action(act_name(st, 'exit'), st._exit) for st in exits]
-    entry_acts = [sm.Action(act_name(st, 'entry'), st._enter)
+    exit_acts = [e.Action(act_name(st, 'exit'), st._exit) for st in exits]
+    entry_acts = [e.Action(act_name(st, 'entry'), st._enter)
                   for st in entries]
     # original transition action must come before any entry action
     entry_acts = [tran_action] + entry_acts
@@ -372,7 +381,7 @@ def OLD_get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
     # orthogonal state)
     elif target_state.kind == 'composite':
         tuples = [ (exit_acts, entry_acts, []) ]
-        tuples += get_state_sequences(target_state, sm.Initial(), flat_states,
+        tuples += get_state_sequences(target_state, e.Initial(), flat_states,
                                       trans_dict, hsm)
         return tuples
     # if transition ends at orthogonal state, add exits and entries we got so
@@ -382,7 +391,7 @@ def OLD_get_state_sequences(src_state, event, flat_states, trans_dict, hsm):
     # of each submachine
     elif target_state.kind == 'orthogonal':
         tuples = [ (exit_acts, entry_acts, []) ]
-        tuples += get_transition_sequences(target_state.states, sm.Initial(),
+        tuples += get_transition_sequences(target_state.states, e.Initial(),
                                            flat_states, trans_dict, hsm)
         return tuples
     assert False, "should never get here"
@@ -421,7 +430,7 @@ def get_events(flat_state_list, trans_dict):
         return ls + [subsub for sub in ls for subsub in get_subclasses(sub)]
 
     events = [evt for outgoing in trans_dict.values()
-              for evt in outgoing.keys() if evt != sm.Initial]
+              for evt in outgoing.keys() if evt != e.Initial]
     events += [sub for evt in events for sub in get_subclasses(evt)]
     return set(events)
 
@@ -462,13 +471,13 @@ def reformat(states_dict, trans_dict, prefix=None):
     """
     def fix(state_sig, val, parent_state=None):
         """Recursively rename and convert to state instance if needed"""
-        if isinstance(val, sm.State):
+        if isinstance(val, e.State):
             # already defined as state
             # copy it, set name and parent, fix children states recursively
             new_state = copy(val)
             children = val.states
         else:
-            new_state = sm.State()
+            new_state = e.State()
             children = val
 
         new_state.sig = add_prefix(state_sig, prefix)

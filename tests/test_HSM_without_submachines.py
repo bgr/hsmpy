@@ -1,15 +1,7 @@
-from hsmpy import HSM, State, EventBus, Event, Initial
-from hsmpy import Transition as T
-from hsmpy import InternalTransition as Internal
-from predefined_machines import make_miro_machine
-from predefined_machines import A, B, C, D, E, G, I
-from predefined_machines import LoggingState
+from hsmpy import HSM, State, EventBus, Event, Initial, T, Internal
+from reusable import (make_miro_machine, LoggingState, get_callback,
+                      A, B, C, D, E, G, I)
 
-
-def get_callback(key):
-    def func(evt, hsm):
-        hsm.data[key] += 1
-    return func
 
 # simple machine with two states and two transitions
 
