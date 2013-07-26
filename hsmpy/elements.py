@@ -3,7 +3,7 @@ from collections import namedtuple
 from eventbus import Event
 from itertools import izip_longest
 import re
-from logic import parse, get_events, get_merged_sequences
+from logic import parse, get_events, get_merged_sequences, entry_sequence
 from validation import (find_unreachable_states,
                         find_duplicate_sigs,
                         find_nonexistent_transition_sources,
@@ -316,15 +316,17 @@ class HSM(object):
         # it has to be done by dispatching unique event (to make sure this
         # method is the only one who can dispatch it), in order to properly
         # queue up any calls to _handle_event that might happen during the
-        # initial _handle_event call initiated by calling kick_start
+        # initial _perform_actions call initiated by calling kick_start
 
         class KickStart(Event):
             pass
 
         def kick_start(evt=None):
             _log.debug("Starting HSM, entering '{0}' state".format(self.root))
-            self.root._enter(Initial(), self)  # force enter root state
-            self._handle_event(Initial())
+            actions = entry_sequence(self.root, self.trans, self.flattened)
+            self._perform_actions(actions, Initial())
+            self.current_state_set = set(act.item for act in actions
+                                         if isinstance(act.item, State))
 
         self.eb.register(KickStart, kick_start)
         self.eb.dispatch(KickStart())
@@ -345,31 +347,30 @@ class HSM(object):
         self._running = False
         _log.debug('HSM stopped')
 
-    def _handle_event(self, event_instance):
+    def _perform_actions(self, actions, event):
+            _log.debug("Performing actions for event {0}: {1}".format(
+                event.__class__.__name__,
+                ', '.join(["'{0}'".format(act.name) for act in actions])
+            ))
+            [act(event, self) for act in actions]
+
+    def _handle_event(self, event):
         """
             Triggers transition (and associated actions) for event, or ignores
             it if none of the states in HSM's current state set is interested
             in that event (or guards don't pass).
         """
-        exits, entries, new_states = get_merged_sequences(
-            self.current_state_set, event_instance, self.flattened, self.trans,
-            self)
+        exits, entries, new_state_set = get_merged_sequences(
+            self.current_state_set, event, self.trans, self.flattened, self)
 
-        if not exits and not entries and not new_states:
-            _log.debug("No response for to event '{0}'".format(event_instance))
-            return
+        assert new_state_set, "New state set cannot possibly be empty"
 
-        _log.debug("HSM responding to event '{0}'".format(event_instance))
         actions = exits + entries
-        _log.debug("Performing actions: {0}".format(', '.join(
-            ["'{0}'".format(action.name) for action in actions]
-        )))
-        [action(event_instance, self) for action in actions]
+        self._perform_actions(actions, event)
 
-        assert new_states, "new state set cannot possibly be empty"
-
-        self.current_state_set = set(new_states)
-        _log.debug("HSM is now in '{0}'".format(self.current_state_set))
+        self.current_state_set = new_state_set
+        _log.debug("HSM is now in states: {0}".format(
+            ', '.join(st.name for st in self.current_state_set)))
 
     def _validate(self, original_states, trans, flat):
         """

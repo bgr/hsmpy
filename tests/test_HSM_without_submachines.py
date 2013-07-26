@@ -1,6 +1,15 @@
 from hsmpy import HSM, State, EventBus, Event, Initial, T, Internal
+from hsmpy.logic import get_path_from_root, get_state_by_sig
 from reusable import (make_miro_machine, LoggingState, get_callback,
                       A, B, C, D, E, G, I)
+
+
+def assert_curr_state(hsm, leaf_name):
+    """Check that HSM's state set is same as set of states from root to leaf"""
+    exp_set = set(
+        get_path_from_root(
+            get_state_by_sig((leaf_name,), hsm.flattened)))
+    assert hsm.current_state_set == exp_set
 
 
 # simple machine with two states and two transitions
@@ -72,21 +81,21 @@ class Test_simple_two_state_door_machine():
 
     def test_in_closed_state_after_starting(self):
         self.hsm.start(self.eb)
-        assert curr_state(self.hsm) == 'closed'
+        assert_curr_state(self.hsm, 'closed')
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['closed_enter'] == 1
         assert self.hsm.data.values().count(0) == 5
 
     def test_ignores_close_while_closed(self):
         self.eb.dispatch(CloseDoor())
-        assert curr_state(self.hsm) == 'closed'
+        assert_curr_state(self.hsm, 'closed')
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['closed_enter'] == 1
         assert self.hsm.data.values().count(0) == 5
 
     def test_transition_to_opened(self):
         self.eb.dispatch(OpenDoor())
-        assert curr_state(self.hsm) == 'opened'
+        assert_curr_state(self.hsm, 'opened')
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['closed_enter'] == 1
         assert self.hsm.data['closed_exit'] == 1  # changed
@@ -97,7 +106,7 @@ class Test_simple_two_state_door_machine():
 
     def test_ignores_open_while_opened(self):
         self.eb.dispatch(OpenDoor())
-        assert curr_state(self.hsm) == 'opened'
+        assert_curr_state(self.hsm, 'opened')
         assert self.hsm.data['closed_enter'] == 1
         assert self.hsm.data['closed_exit'] == 1
         assert self.hsm.data['opened_enter'] == 1
@@ -107,7 +116,7 @@ class Test_simple_two_state_door_machine():
 
     def test_transition_to_closed(self):
         self.eb.dispatch(CloseDoor())
-        assert curr_state(self.hsm) == 'closed'
+        assert_curr_state(self.hsm, 'closed')
         assert self.hsm.data['closed_enter'] == 2  # changed
         assert self.hsm.data['closed_exit'] == 1
         assert self.hsm.data['opened_enter'] == 1
@@ -117,7 +126,7 @@ class Test_simple_two_state_door_machine():
 
     def test_ignores_close_while_closed_again(self):
         self.eb.dispatch(CloseDoor())
-        assert curr_state(self.hsm) == 'closed'
+        assert_curr_state(self.hsm, 'closed')
         assert self.hsm.data['closed_enter'] == 2
         assert self.hsm.data['closed_exit'] == 1
         assert self.hsm.data['opened_enter'] == 1
@@ -127,7 +136,7 @@ class Test_simple_two_state_door_machine():
 
     def test_transition_to_opened_again(self):
         self.eb.dispatch(OpenDoor())
-        assert curr_state(self.hsm) == 'opened'
+        assert_curr_state(self.hsm, 'opened')
         assert self.hsm.data['closed_enter'] == 2
         assert self.hsm.data['closed_exit'] == 2  # changed
         assert self.hsm.data['opened_enter'] == 2  # changed
@@ -137,7 +146,7 @@ class Test_simple_two_state_door_machine():
 
     def test_transition_to_closed_again(self):
         self.eb.dispatch(CloseDoor())
-        assert curr_state(self.hsm) == 'closed'
+        assert_curr_state(self.hsm, 'closed')
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['closed_enter'] == 3  # changed
         assert self.hsm.data['closed_exit'] == 2
@@ -246,7 +255,7 @@ class Test_loops_and_multiple_paths_machine():
 
     def test_in_start_state_after_starting(self):
         self.hsm.start(self.eb)
-        assert curr_state(self.hsm) == 'start'
+        assert_curr_state(self.hsm, 'start')
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data.values().count(0) == 7
@@ -254,14 +263,14 @@ class Test_loops_and_multiple_paths_machine():
     def test_ignore_loop_and_restart_events_while_in_start(self):
         self.eb.dispatch(Loop())
         self.eb.dispatch(Restart())
-        assert curr_state(self.hsm) == 'start'
+        assert_curr_state(self.hsm, 'start')
         assert self.hsm.data['initial'] == 1
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data.values().count(0) == 7
 
     def test_transition_to_goal_via_right(self):
         self.eb.dispatch(MoveRight())
-        assert curr_state(self.hsm) == 'goal'
+        assert_curr_state(self.hsm, 'goal')
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1  # changed
         assert self.hsm.data['goal_enter'] == 1  # changed
@@ -274,7 +283,7 @@ class Test_loops_and_multiple_paths_machine():
     def test_ignore_left_and_right_events_while_in_goal(self):
         self.eb.dispatch(MoveLeft())
         self.eb.dispatch(MoveRight())
-        assert curr_state(self.hsm) == 'goal'
+        assert_curr_state(self.hsm, 'goal')
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1
         assert self.hsm.data['goal_enter'] == 1
@@ -286,7 +295,7 @@ class Test_loops_and_multiple_paths_machine():
 
     def test_loop_in_goal(self):
         self.eb.dispatch(Loop())
-        assert curr_state(self.hsm) == 'goal'
+        assert_curr_state(self.hsm, 'goal')
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1
         assert self.hsm.data['goal_enter'] == 2  # changed
@@ -296,7 +305,7 @@ class Test_loops_and_multiple_paths_machine():
         assert self.hsm.data['trans_loop'] == 1  # changed
         assert self.hsm.data['trans_restart'] == 0
         self.eb.dispatch(Loop())
-        assert curr_state(self.hsm) == 'goal'
+        assert_curr_state(self.hsm, 'goal')
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1
         assert self.hsm.data['goal_enter'] == 3  # changed
@@ -306,7 +315,7 @@ class Test_loops_and_multiple_paths_machine():
         assert self.hsm.data['trans_loop'] == 2  # changed
         assert self.hsm.data['trans_restart'] == 0
         self.eb.dispatch(Loop())
-        assert curr_state(self.hsm) == 'goal'
+        assert_curr_state(self.hsm, 'goal')
         assert self.hsm.data['start_enter'] == 1
         assert self.hsm.data['start_exit'] == 1
         assert self.hsm.data['goal_enter'] == 4  # changed
@@ -319,7 +328,7 @@ class Test_loops_and_multiple_paths_machine():
     def test_restart(self):
         assert self.hsm.data['initial'] == 1
         self.eb.dispatch(Restart())
-        assert curr_state(self.hsm) == 'start'
+        assert_curr_state(self.hsm, 'start')
         assert self.hsm.data['initial'] == 2  # changed
         assert self.hsm.data['start_enter'] == 2  # changed
         assert self.hsm.data['start_exit'] == 1
@@ -345,7 +354,7 @@ class Test_loops_and_multiple_paths_machine():
 
     def test_transition_to_goal_via_left(self):
         self.eb.dispatch(MoveLeft())
-        assert curr_state(self.hsm) == 'goal'
+        assert_curr_state(self.hsm, 'goal')
         assert self.hsm.data['start_enter'] == 2
         assert self.hsm.data['start_exit'] == 2  # changed
         assert self.hsm.data['goal_enter'] == 5  # changed
@@ -421,13 +430,6 @@ class Test_perpetual_machine(object):
 
 # testing that entry and exit actions are invoked
 
-
-def curr_state(hsm):
-    ls = list(hsm.current_state_set)
-    assert len(ls) == 1
-    return ls[0].name
-
-
 class Test_entry_exit_actions(object):
     def setup_class(self):
         self.states = {
@@ -458,7 +460,7 @@ class Test_entry_exit_actions(object):
 
     def test_in_idle_after_starting(self):
         self.hsm.start(self.eb)
-        assert curr_state(self.hsm) == 'idle'
+        assert_curr_state(self.hsm, 'idle')
 
     def test_actions_invoked_after_starting(self):
         assert self.hsm.data._log == {
@@ -500,7 +502,7 @@ class Test_miro_machine(object):
 
     def test_step_1_in_s211_after_starting(self):
         self.hsm.start(self.eb)
-        assert curr_state(self.hsm) == 's211'
+        assert_curr_state(self.hsm, 's211')
         assert self.hsm.data.foo is False
         assert self.hsm.data._log == {
             'top_enter': 1,
@@ -512,7 +514,7 @@ class Test_miro_machine(object):
 
     def test_step_2_in_s11_after_G(self):
         self.eb.dispatch(G())
-        assert curr_state(self.hsm) == 's11'
+        assert_curr_state(self.hsm, 's11')
         assert self.hsm.data._log == {
             'top_enter': 1,
             's_enter': 1,
@@ -531,7 +533,7 @@ class Test_miro_machine(object):
         assert self.hsm.data.foo is False
         self.eb.dispatch(I())
         assert self.hsm.data.foo is False
-        assert curr_state(self.hsm) == 's11'
+        assert_curr_state(self.hsm, 's11')
         assert self.hsm.data._log == {
             'top_enter': 1,
             's_enter': 1,
@@ -548,7 +550,7 @@ class Test_miro_machine(object):
 
     def test_step_4_in_s11_after_A(self):
         self.eb.dispatch(A())
-        assert curr_state(self.hsm) == 's11'
+        assert_curr_state(self.hsm, 's11')
         assert self.hsm.data._log == {
             'top_enter': 1,
             's_enter': 1,
@@ -570,7 +572,7 @@ class Test_miro_machine(object):
         assert self.hsm.data.foo is False
         self.eb.dispatch(D())
         assert self.hsm.data.foo is True
-        assert curr_state(self.hsm) == 's11'
+        assert_curr_state(self.hsm, 's11')
         assert self.hsm.data._log == {
             'top_enter': 1,
             's_enter': 1,
@@ -591,7 +593,7 @@ class Test_miro_machine(object):
         assert self.hsm.data.foo is True
         self.eb.dispatch(D())
         assert self.hsm.data.foo is False
-        assert curr_state(self.hsm) == 's11'
+        assert_curr_state(self.hsm, 's11')
         assert self.hsm.data._log == {
             'top_enter': 1,
             's_enter': 1,
@@ -610,7 +612,7 @@ class Test_miro_machine(object):
 
     def test_step_7_in_s211_after_C(self):
         self.eb.dispatch(C())
-        assert curr_state(self.hsm) == 's211'
+        assert_curr_state(self.hsm, 's211')
         assert self.hsm.data._log == {
             'top_enter': 1,
             's_enter': 1,
@@ -629,7 +631,7 @@ class Test_miro_machine(object):
 
     def test_step_8_in_s11_after_E(self):
         self.eb.dispatch(E())
-        assert curr_state(self.hsm) == 's11'
+        assert_curr_state(self.hsm, 's11')
         assert self.hsm.data._log == {
             'top_enter': 1,
             's_enter': 1,
@@ -648,7 +650,7 @@ class Test_miro_machine(object):
 
     def test_step_9_in_s11_after_E(self):
         self.eb.dispatch(E())
-        assert curr_state(self.hsm) == 's11'
+        assert_curr_state(self.hsm, 's11')
         assert self.hsm.data._log == {
             'top_enter': 1,
             's_enter': 1,
@@ -667,7 +669,7 @@ class Test_miro_machine(object):
 
     def test_step_10_in_s211_after_G(self):
         self.eb.dispatch(G())
-        assert curr_state(self.hsm) == 's211'
+        assert_curr_state(self.hsm, 's211')
         assert self.hsm.data._log == {
             'top_enter': 1,
             's_enter': 1,
@@ -784,7 +786,7 @@ class Test_internal_transitions:
 
     def test_in_idle_after_starting(self):
         self.hsm.start(self.eb)
-        assert list(self.hsm.current_state_set)[0].name == 'idle'
+        assert_curr_state(self.hsm, 'idle')
 
     def test_idle_responds_to_A(self):
         self.eb.dispatch(A())
@@ -798,7 +800,7 @@ class Test_internal_transitions:
             'working_internal_B': 0,
             'leaf_internal_A': 0,
         }
-        assert list(self.hsm.current_state_set)[0].name == 'idle'
+        assert_curr_state(self.hsm, 'idle')
 
     def test_idle_responds_to_B(self):
         self.eb.dispatch(B())
@@ -812,7 +814,7 @@ class Test_internal_transitions:
             'working_internal_B': 0,
             'leaf_internal_A': 0,
         }
-        assert list(self.hsm.current_state_set)[0].name == 'idle'
+        assert_curr_state(self.hsm, 'idle')
 
     def test_top_responds_to_C_from_idle(self):
         self.eb.dispatch(C())
@@ -826,11 +828,11 @@ class Test_internal_transitions:
             'working_internal_B': 0,
             'leaf_internal_A': 0,
         }
-        assert list(self.hsm.current_state_set)[0].name == 'idle'
+        assert_curr_state(self.hsm, 'idle')
 
     def test_in_leaf_after_dispatching_Step(self):
         self.eb.dispatch(Step())
-        assert list(self.hsm.current_state_set)[0].name == 'leaf'
+        assert_curr_state(self.hsm, 'leaf')
         assert self.hsm.data == {  # nothing changed
             'top_internal_A': 0,
             'top_internal_B': 0,
@@ -854,7 +856,7 @@ class Test_internal_transitions:
             'working_internal_B': 0,
             'leaf_internal_A': 1,
         }
-        assert list(self.hsm.current_state_set)[0].name == 'leaf'
+        assert_curr_state(self.hsm, 'leaf')
 
     def test_working_responds_to_B_from_leaf(self):
         self.eb.dispatch(B())
@@ -868,7 +870,7 @@ class Test_internal_transitions:
             'working_internal_B': 1,
             'leaf_internal_A': 1,
         }
-        assert list(self.hsm.current_state_set)[0].name == 'leaf'
+        assert_curr_state(self.hsm, 'leaf')
 
     def test_top_responds_to_C_from_leaf(self):
         self.eb.dispatch(C())
@@ -882,4 +884,4 @@ class Test_internal_transitions:
             'working_internal_B': 1,
             'leaf_internal_A': 1,
         }
-        assert list(self.hsm.current_state_set)[0].name == 'leaf'
+        assert_curr_state(self.hsm, 'leaf')

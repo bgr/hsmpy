@@ -81,6 +81,6 @@ class EventBus(object):
         groups = [(evt.__name__, len(grp))
                   for evt, grp in self.listeners.items()]
         total = sum(l for _, l in groups)
-        return "Groups: {n_groups}, total callbacks: {total} - {items}".format(
-            n_groups=len(groups), total=total, items=', '.join(
-                ['{0}: {1}'.format(evt, l) for evt, l in groups]))
+        return "Stats: {total} registered for {groups} events: {items}".format(
+            groups=len(groups), total=total, items=', '.join(
+                ['{0}:{1}'.format(evt, l) for evt, l in groups]))

@@ -1,5 +1,5 @@
 import pytest
-from hsmpy import HSM, Initial
+from hsmpy import HSM
 from hsmpy.logic import (get_merged_sequences, get_state_by_sig,
                          get_path_from_root)
 from reusable import (make_miro_machine, make_nested_machine, MockHSM,
@@ -28,13 +28,8 @@ def check(hsm, state_name, Event, foo_before, foo_expected,
     exit_action_names = [str(act) for act in exit_actions]
     entry_action_names = [str(act) for act in entry_actions]
 
-    print 'EXP EXITS', expected_exits
-    print 'GOT EXITS', exit_action_names
     assert exit_action_names == expected_exits
-    print 'EXP ENTRIES', expected_entries
-    print 'GOT ENTRIES', entry_action_names
     assert entry_action_names == expected_entries
-
     assert new_state_set  == expected_state_set
 
     # perform actions to update 'foo' value in mock_hsm.data
@@ -134,10 +129,11 @@ class Test_transition_sequences_miro_machine(object):
 
 
 nested_machine_sequences = [
-    ('top', Initial, _, _, 'C',
-     [],
-     ['top-Initial', 'A-entry', 'A-Initial', 'B-entry', 'B-Initial',
-      'C-entry']),
+    # not a valid way to handle Initial transitions
+    #('top', Initial, _, _, 'C',
+    # [],
+    # ['top-Initial', 'A-entry', 'A-Initial', 'B-entry', 'B-Initial',
+    #  'C-entry']),
 
     # A responding to its events
     ('A', A, _, _, 'C',

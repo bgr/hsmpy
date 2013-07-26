@@ -1,5 +1,5 @@
 import pytest
-from hsmpy import HSM, State, Initial
+from hsmpy import HSM, State
 from hsmpy.logic import get_responses, get_state_by_sig, tree_from_state_set
 from reusable import (A, B, C, D, E, F, G, H, I, TERMINATE,
                       make_submachines_machine, make_submachines_async_machine,
@@ -15,11 +15,11 @@ responding_miro_machine = [
     ('s', TERMINATE, _, _, 's', 'final'),
     ('s11', TERMINATE, _, _, 's', 'final'),
     ('s211', TERMINATE, _, _, 's', 'final'),
-    ('top', Initial, _, _, 'top', 's2'),
-    ('s', Initial, _, _, 's', 's11'),
-    ('s1', Initial, _, _, 's1', 's11'),
-    ('s2', Initial, _, _, 's2', 's211'),
-    ('s21', Initial, _, _, 's21', 's211'),
+    #('top', Initial, _, _, 'top', 's2'),
+    #('s', Initial, _, _, 's', 's11'),
+    #('s1', Initial, _, _, 's1', 's11'),
+    #('s2', Initial, _, _, 's2', 's211'),
+    #('s21', Initial, _, _, 's21', 's211'),
     ('s211', H, _, _, 's211', 's'),
     ('s211', G, _, _, 's21', 's1'),
     ('s211', C, _, _, 's2', 's1'),
@@ -31,8 +31,8 @@ responding_miro_machine = [
     ('s11', B, _, _, 's1', 's11'),
 
     # guards are relevant:
-    ('top', Initial, False, False, 'top', 's2'),
-    ('top', Initial, True, False, 'top', 's2'),
+    #('top', Initial, False, False, 'top', 's2'),
+    #('top', Initial, True, False, 'top', 's2'),
     ('s11', D, True, False, 's11', 's1'),
     ('s11', D, False, True, 's1', 's'),
     ('s1', D, False, True, 's1', 's'),
