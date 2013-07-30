@@ -10,7 +10,8 @@ from validation import (find_unreachable_states,
                         find_nonexistent_transition_targets,
                         find_missing_initial_transitions,
                         find_invalid_initial_transitions,
-                        find_invalid_local_transitions)
+                        find_invalid_local_transitions,
+                        find_invalid_choice_transitions)
 
 
 _log = logging.getLogger(__name__)
@@ -191,6 +192,7 @@ def _make_tran(Which, target, action=None, guard=None):
 _Transition = namedtuple('Transition', 'target, action, guard')
 _Local = namedtuple('LocalTransition', 'target, action, guard')
 _Internal = namedtuple('InternalTransition', 'target, action, guard')
+_Choice = namedtuple('ChoiceTransition', 'switch, default, key, action')
 
 
 def Transition(target, action=None, guard=None):
@@ -230,6 +232,34 @@ def InternalTransition(action=None, guard=None):
         Doesn't have a target state. Doesn't cause change of states.
     """
     return _make_tran(_Internal, None, action, guard)
+
+
+def ChoiceTransition(switch, default=None, key=None, action=None):
+    """
+        Choice transition.
+
+        Allows choosing a target state based on the value returned by *key*
+        function. Target state is chosen from *switch* dictionary which maps
+        values returned by *key* function to strings representing target state
+        names.
+
+        Parameters
+        ----------
+        switch : dict
+            mapping of values to state names
+        default : str (optional)
+            name of default target state to transition to if *switch* doesn't
+            have a key returned by *key* function (and in that case if
+            *default* is left unspecified no transition will be performed)
+        key : function (optional)
+            function that takes two parameters: event instance and HSM
+            instance, and returns a value that matches *switch* dict keys.
+            if unspecified, event_instance.data will be used as key
+        action : func (optional)
+            action to be performed when transition is performed
+    """
+    default_key = lambda evt, hsm: evt.data
+    return _Choice(switch, default, key or default_key, action or do_nothing)
 
 
 class Action(namedtuple('Action', 'name, function, item')):
@@ -426,3 +456,6 @@ class HSM(object):
         inv_local = find_invalid_local_transitions(flat, trans)
         chk("Invalid local transitions (must be parent-child relationship, "
             "must not be loop or initial transition)", inv_local)
+
+        inv_choice = find_invalid_choice_transitions(flat, trans)
+        chk("Invalid choice transitions", inv_choice)

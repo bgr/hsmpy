@@ -210,13 +210,18 @@ def get_incoming_transitions(target_state_sig, trans_dict,
         (source_state_name, triggering_event, transition).
     """
     found = []
+
+    def targets_match(tran):
+        if isinstance(tran, e._Choice):
+            return (tran.default == target_state_sig or
+                    any(v == target_state_sig for v in tran.switch.values()))
+        return tran.target == target_state_sig
+
     for source_state_sig, outgoing_trans in trans_dict.items():
         for event, tran in outgoing_trans.items():
             is_loop = (target_state_sig == source_state_sig)
-            if (tran.target == target_state_sig
-                    and (include_loops or not is_loop)):
-                    # this ^ will be false only when it's a loop
-                    # and include_loops is False
+            if targets_match(tran) and (include_loops or not is_loop):
+                # don't include if it's a loop and include_loops is False
                 found += [(source_state_sig, event, tran)]
     return found
 
@@ -285,20 +290,28 @@ def add_prefix(name, prefix):
 
 def rename_transitions(trans_dict, prefix):
     """Renames source state sigs and outgoing transition targets"""
-    def rename_tran_target(tran):
+
+    def rename_targets(tran):
         """Returns new transition with prefix prepended to target state sig"""
-        if tran.target is None:
+        if isinstance(tran, e._Choice):
+            if tran.default is None:
+                new_default = None
+            else:
+                new_default = add_prefix(tran.default, prefix)
+            new_switch = dict((k, add_prefix(v, prefix))
+                              for k, v in tran.switch.items())
+            return tran._make((new_switch, new_default, tran.key, tran.action))
+        if tran.target is None:  # internal has no target
             return tran
         new_name = add_prefix(tran.target, prefix)
         return tran._make((new_name, tran.action, tran.guard))
 
-    def rename_event_trans_map(trans_map):
+    def rename_trans_map(trans_map):
         """Renames transition targets in evt -> tran sub-dictionary"""
-        return dict([(evt, rename_tran_target(tran))
-                     for evt, tran in trans_map.items()])
+        return dict((evt, rename_targets(tr)) for evt, tr in trans_map.items())
 
-    return dict([(add_prefix(src_sig, prefix), rename_event_trans_map(outg))
-                 for src_sig, outg in trans_dict.items()])
+    return dict((add_prefix(src_sig, prefix), rename_trans_map(outgoing_map))
+                for src_sig, outgoing_map in trans_dict.items())
 
 
 def reformat(states_dict, trans_dict, prefix=None):
