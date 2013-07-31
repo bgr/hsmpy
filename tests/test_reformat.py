@@ -3,7 +3,7 @@ from hsmpy import State, Initial, Local
 from reusable import leaf, composite, orthogonal, make_miro_machine, A, T
 
 
-class Test_reformat(object):
+class Test_reformat:
     def test_empty(self):
         assert reformat({}, {}) == ([], {})
 

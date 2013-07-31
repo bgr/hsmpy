@@ -60,7 +60,7 @@ responding_miro_machine = [
 ]
 
 
-class Test_get_response_considering_guards(object):
+class Test_get_response_considering_guards:
 
     def setup_class(self):
         states, trans = make_miro_machine(use_logging=True)
@@ -186,7 +186,7 @@ responding_submachines_machine = [
 ]
 
 
-class Test_get_response_submachines_machine(object):
+class Test_get_response_submachines_machine:
 
     def setup_class(self):
         states, trans = make_submachines_machine(use_logging=False)
@@ -212,7 +212,7 @@ responding_submachines_async_machine = [
 ]
 
 
-class Test_get_response_submachines_async_machine(object):
+class Test_get_response_submachines_async_machine:
 
     def setup_class(self):
         states, trans = make_submachines_async_machine(use_logging=False)
@@ -223,3 +223,17 @@ class Test_get_response_submachines_async_machine(object):
         responding_submachines_async_machine)
     def test_run(self, states, Event, exp_resp_states, exp_tran_targets):
         check(self.hsm, states, Event, exp_resp_states, exp_tran_targets)
+
+
+
+
+##################### test response of Choice transition ######################
+
+
+class Test_get_response_of_Choice_transition:
+
+    def setup_class(self):
+        pass
+
+    def test(self):
+        assert False

@@ -353,7 +353,8 @@ class HSM(object):
 
         def kick_start(evt=None):
             _log.debug("Starting HSM, entering '{0}' state".format(self.root))
-            actions = entry_sequence(self.root, self.trans, self.flattened)
+            actions = entry_sequence(self.root, self.trans,
+                                     self.flattened, self)
             self._perform_actions(actions, Initial())
             self.current_state_set = set(act.item for act in actions
                                          if isinstance(act.item, State))
@@ -450,8 +451,7 @@ class HSM(object):
         chk("Composite states with missing initial transitions", miss)
 
         inv_init = find_invalid_initial_transitions(flat, trans)
-        chk("Invalid initial transitions (must not be loop, "
-            "local or point outside of the state)", inv_init)
+        chk("Invalid initial transitions", inv_init)
 
         inv_local = find_invalid_local_transitions(flat, trans)
         chk("Invalid local transitions (must be parent-child relationship, "

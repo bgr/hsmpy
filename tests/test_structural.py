@@ -7,6 +7,7 @@ from hsmpy.validation import (find_duplicate_sigs,
                               find_missing_initial_transitions,
                               find_invalid_initial_transitions,
                               find_invalid_local_transitions,
+                              find_invalid_choice_transitions,
                               find_unreachable_states)
 from hsmpy import State, HSM, T, Initial, Internal, Local, Choice
 from reusable import A, B, C
@@ -57,7 +58,7 @@ class Test_find_duplicate_state_names:
 
 
 
-class Test_structural_analysis(object):
+class Test_structural_analysis:
 
     def setup_class(self):
         states = {
@@ -146,6 +147,11 @@ class Test_structural_analysis(object):
                 A: T('left'),
                 B: T('right'),
             },
+            'choice_placeholder_1': {
+                A: Choice({ 2: 'bad_target' }),
+                B: Choice({ 2: 'choice_test_1' }, default='bad_target'),
+                C: Choice({}, default='choice_test_1'),
+            }
         }
         self.hsm = HSM(states, trans, skip_validation=True)
 
@@ -240,9 +246,25 @@ class Test_structural_analysis(object):
                       in find_invalid_local_transitions(self.hsm.flattened,
                                                         self.hsm.trans)]
         assert sorted(res_tuples) == sorted([
-            ('left_B', 'A', 'left_A'),
-            ('right', 'A', 'left_A'),
-            ('right', 'B', 'right'),
+            ('left_B', A, 'left_A'),
+            ('right', A, 'left_A'),
+            ('right', B, 'right'),
+        ])
+
+
+    def test_find_invalid_choice_transitions(self):
+        func = find_invalid_choice_transitions
+        res = sorted((State.sig_to_name(sig), evt)
+                     for sig, evt in func(self.hsm.flattened, self.hsm.trans))
+        assert sorted(res) == sorted([
+            ('choice_placeholder_1', A),
+            ('choice_placeholder_1', B),
+            ('choice_placeholder_1', C),
+            ('right_A', A),
+            ('right_A', C),
+            ('choice_test_1', Initial),
+            #('right_A', Initial),  # these two are valid Choices, but not
+            #('right_B', Initial),  # valid initial transitions
         ])
 
 

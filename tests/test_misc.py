@@ -8,7 +8,7 @@ from reusable import (make_miro_machine, make_nested_machine, leaf, composite,
                       CB_ex, BA_loc, CA_loc, CB_loc)
 
 
-class Test_get_events(object):
+class Test_get_events:
 
     def test_miro_machine_events(self):
         states, trans = make_miro_machine(use_logging=False)
@@ -40,7 +40,7 @@ class C22(C2): pass
 class Ignored(RootEventB): pass
 
 
-class Test_get_events_with_subclasses(object):
+class Test_get_events_with_subclasses:
     def setup_class(self):
         self.states = {
             'top': State({
@@ -72,7 +72,7 @@ class Test_get_events_with_subclasses(object):
 
 
 
-class Test_flatten(object):
+class Test_flatten:
     def test_single_empty(self):
         assert flatten([]) == []
 
@@ -126,7 +126,7 @@ class Test_flatten(object):
 
 
 
-class Test_State_equals(object):
+class Test_State_equals:
     def test_fresh(self):
         assert State() == State()
 
@@ -299,7 +299,7 @@ class Test_State_equals(object):
 
 
 
-class Test_state_sig_and_name(object):
+class Test_state_sig_and_name:
     @pytest.mark.parametrize(('sig', 'name'), [
         ((), ''),
         (('',), ''),

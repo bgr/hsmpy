@@ -39,7 +39,7 @@ class OpenDoor(Event):
     pass
 
 
-class Test_simple_two_state_door_machine():
+class Test_simple_two_state_door_machine:
     def setup_class(self):
         self.eb = EventBus()
         hsmdata = {
@@ -395,7 +395,7 @@ class Step(Event):
     pass
 
 
-class Test_perpetual_machine(object):
+class Test_perpetual_machine:
 
     def setup_class(self):
         self.eb = EventBus()
@@ -430,7 +430,7 @@ class Test_perpetual_machine(object):
 
 # testing that entry and exit actions are invoked
 
-class Test_entry_exit_actions(object):
+class Test_entry_exit_actions:
     def setup_class(self):
         self.states = {
             'top': LoggingState({
@@ -494,7 +494,7 @@ class Test_entry_exit_actions(object):
 # cycle Miro test machine with event sequence featured in the pdf example
 
 
-class Test_miro_machine(object):
+class Test_miro_machine:
     def setup_class(self):
         self.states, self.trans = make_miro_machine(use_logging=True)
         self.hsm = HSM(self.states, self.trans)

@@ -67,18 +67,15 @@ def find_invalid_initial_transitions(flat_state_list, trans_dict):
         msg = None
 
         get_state = lambda sig: l.get_state_by_sig(sig, flat_state_list)
-        is_child = lambda sig: state in l.get_path_from_root(get_state(sig))
+        is_child = lambda sg: state in l.get_path_from_root(get_state(sg))[:-1]
 
         if isinstance(init_tran, e._Local):
-            msg = ('initial transition cannot be declared using '
-                   'LocalTransition, use Choice or regular Transition')
+            msg = 'cannot use LocalTransition for initial'
         elif isinstance(init_tran, e._Internal):
-            msg = ('initial transition cannot be declared using '
-                   'InternalTransition, use Choice or regular Transition')
+            msg = 'cannot use InternalTransition for initial'
         elif isinstance(init_tran, e._Choice):
             if init_tran.default is None:
-                msg = ('must declare default target when using '
-                       'Choice as initial transition')
+                msg = ('must declare default when using Choice as initial')
             elif get_state(init_tran.default) is None:
                 msg = 'default points to nonexistent state'
             elif not is_child(init_tran.default):
@@ -86,7 +83,7 @@ def find_invalid_initial_transitions(flat_state_list, trans_dict):
             elif any(get_state(s) is None for s in init_tran.switch.values()):
                 msg = 'switch dict references nonexistent state'
             elif not all(is_child(sig) for sig in init_tran.switch.values()):
-                msg = 'switch dict values must be names of child states'
+                msg = 'switch dict value not a child state'
         # at this point we know it is instance of regular Transition
         elif init_tran.target == st.sig:
             msg = 'initial transition cannot be a loop'
@@ -103,7 +100,7 @@ def find_invalid_initial_transitions(flat_state_list, trans_dict):
 
 def find_invalid_local_transitions(flat_state_list, trans_dict):
     """
-        Returns list of 3-tuples (state_sig, event, transition).
+        Returns list of 3-tuples (state_sig, event_type, transition).
         To be valid, local transition must be must be from superstate to
         substate or vice versa (source and target must be in parent-child
         relationship), and cannot be a self-loop.
@@ -118,7 +115,7 @@ def find_invalid_local_transitions(flat_state_list, trans_dict):
     common_parent = lambda sig_a, sig_b: l.get_common_parent(
         get_by_sig(sig_a), get_by_sig(sig_b)).sig
 
-    return [(st_sig, evt.__name__, tran.target)
+    return [(st_sig, evt, tran.target)
             for st_sig, outgoing in trans_dict.items()
             for evt, tran in outgoing.items()
             if st_sig not in bad_state_sigs and
@@ -128,7 +125,7 @@ def find_invalid_local_transitions(flat_state_list, trans_dict):
 
 
 def find_invalid_choice_transitions(flat_state_list, trans_dict):
-    """ Returns list of tuples (state_sig, event_name) for each malformed
+    """ Returns list of tuples (state_sig, event_type) for each malformed
         Choice transition found.
 
         Choice transition is invalid if default is not a valid state name, or
@@ -136,7 +133,7 @@ def find_invalid_choice_transitions(flat_state_list, trans_dict):
         valid state name.
     """
     state_sigs = [st.sig for st in flat_state_list]
-    choice_trans = [(tran, src_sig, evt.__name__)
+    choice_trans = [(tran, src_sig, evt)
                     for src_sig, dct in trans_dict.items()
                     for evt, tran in dct.items()
                     if isinstance(tran, e._Choice)]
@@ -171,9 +168,13 @@ def find_unreachable_states(top_state, flat_state_list, trans_dict):
             visit(parent, visited)
         # visit transition targets going out of current state
         for tran in trans_dict.get(state.sig, {}).values():
-            target_state = l.get_state_by_sig(tran.target, flat_state_list)
-            if target_state is not None:  # nonexistent state in trans_dict
-                visit(target_state, visited)  # will be checked by another func
+            if isinstance(tran, e._Choice):
+                to_visit = [l.get_state_by_sig(sig, flat_state_list)
+                            for sig in tran.switch.values() + [tran.default]]
+            else:
+                to_visit = [l.get_state_by_sig(tran.target, flat_state_list)]
+            # nonexistent states (None values in list) are checked elsewhere
+            [visit(st, visited) for st in to_visit if st is not None]
         return visited
 
     reachable = visit(top_state)

@@ -1,4 +1,4 @@
-"""Helper functions"""
+"""Functions that parse, transform and query the HSM structure"""
 
 from copy import copy
 import elements as e
@@ -21,7 +21,7 @@ def get_merged_sequences(state_set, event, trans_map, flat_states, hsm):
     # and get exit and entry sequence for each response
     tree = tree_from_state_set(state_set)
     resps = get_responses(tree, event, trans_map, hsm)
-    seqs = [get_response_sequence(resp, event, trans_map, flat_states)
+    seqs = [get_response_sequence(resp, event, trans_map, flat_states, hsm)
             for resp in resps]
 
     # extract and join exit and entry Actions from lists in sequence tuples
@@ -43,8 +43,9 @@ def get_merged_sequences(state_set, event, trans_map, flat_states, hsm):
 
 
 def join_paths(paths):
-    """ Finds paths with common root node and joins them. In order to join all
-        paths into one tree, all *paths* should all have a common root state.
+    """ Joins multiple paths with common nodes into single path (up to the
+        differing node). In order to join all paths into one tree, all *paths*
+        should all have a common root state.
     """
     nodes = {}
     # put all subpaths with common root state under same dict key
@@ -62,14 +63,15 @@ def join_paths(paths):
 
 
 def tree_from_state_set(state_set):
-    """Makes a tree by joining paths from root to each state in *state_set*."""
+    """ Reconstructs the tree out of states in *state_set* by joining paths
+        from each state to the root.
+    """
     return join_paths([get_path_from_root(st) for st in state_set])
 
 
 def get_responses(tree_roots, event, trans_map, hsm):
-    """ Returns list of tuples (responding_branch_tuple, transition).
-        For description of *responding_branch_tuple* and *branch_tuple* see
-        function *enter_subtree*.
+    """ Returns list of tuples (responding_node, transition).
+        *responding_node* is a tuple (state, subnodes).
     """
     if isinstance(event, e.Initial):
         raise TypeError("You shouldn't ever dispatch Initial event")
@@ -91,15 +93,15 @@ def get_responses(tree_roots, event, trans_map, hsm):
     return resps
 
 
-def postorder(branches):
+def postorder(nodes):
     """ Returns flattened states of the tree gathered by post-order traversal
-        of *branches* defined by tuples (state, subbranches).
+        of each node in *nodes*, where node is tuples (state, subnodes).
     """
-    return [st for root, subtrees in branches
-            for st in postorder(subtrees) + [root]]
+    return [st for root, subnodes in nodes
+            for st in postorder(subnodes) + [root]]
 
 
-def get_response_sequence(response, event, trans_map, flat_states):
+def get_response_sequence(response, event, trans_map, flat_states, hsm):
     """Returns tuple (exit_actions, entry_actions)."""
     (resp_state, subtree), transition = response
 
@@ -108,7 +110,19 @@ def get_response_sequence(response, event, trans_map, flat_states):
     if isinstance(transition, e._Internal):  # internal transition
         return ([], [transition_action])  # no exits, no state entries
 
-    target_state = get_state_by_sig(transition.target, flat_states)
+    if isinstance(transition, e._Choice):
+        key = transition.key(event, hsm)
+        target_name = transition.switch.get(key) or transition.default
+        # choice condition can be unfulfilled in this implementation, that's
+        # not really congruent with UML's statemachines but I don't see why it
+        # should be a problem - regular transitions can have guards that
+        # prevent transition which has same effect
+        if target_name is None:
+            return ([], [transition_action])
+        target_state = get_state_by_sig(target_name)
+    else:
+        target_state = get_state_by_sig(transition.target, flat_states)
+
     # follow transition - perform exits from responding state to common parent
     # and then enter states from common parent towards transition target state
     exits_till_parent, parent, entries_till_target = get_path(resp_state,
@@ -125,18 +139,24 @@ def get_response_sequence(response, event, trans_map, flat_states):
     exits = [exit_act(st) for st in states_to_exit]
     entries = ([transition_action]
                + [entry_act(st) for st in states_to_enter]
-               + entry_sequence(target_state, trans_map, flat_states)[1:])
+               + entry_sequence(target_state, trans_map, flat_states, hsm)[1:])
 
     return (exits, entries)
 
 
-def entry_sequence(state, trans_map, flat_states):
+def entry_sequence(state, trans_map, flat_states, hsm):
     """Returns list of Actions to be performed when entering state."""
     if state.kind == 'leaf':
         return [entry_act(state)]
     if state.kind == 'composite':
         init_tran = trans_map[state.sig][e.Initial]
-        target_state = get_state_by_sig(init_tran.target, flat_states)
+        if isinstance(init_tran, e._Choice):
+            key = init_tran.key(e.Initial(), hsm)
+            target_name = init_tran.switch.get(key) or init_tran.default
+            assert target_name is not None
+            target_state = get_state_by_sig(target_name, flat_states)
+        else:
+            target_state = get_state_by_sig(init_tran.target, flat_states)
         # states to enter when following initial transition that points to a
         # nested state that is not immediate child. it's not done recursively
         # since it should ignore all nested initial transitions until target.
@@ -144,7 +164,8 @@ def entry_sequence(state, trans_map, flat_states):
         _, _, to_enter = get_path(state, target_state)
         # transition might end at another composite/orthogonal, recursively
         # create the subbranch
-        subtree_entries = entry_sequence(target_state, trans_map, flat_states)
+        subtree_entries = entry_sequence(target_state, trans_map,
+                                         flat_states, hsm)
         # wrap into actions and join
         return ([entry_act(state), tran_act(state, e.Initial(), init_tran)]
                 + [entry_act(st) for st in to_enter[:-1]] + subtree_entries)
@@ -152,7 +173,7 @@ def entry_sequence(state, trans_map, flat_states):
         # get action sequences for each submachine and flatten them in place
         sub_acts = [act
                     for st in state.states
-                    for act in entry_sequence(st, trans_map, flat_states)]
+                    for act in entry_sequence(st, trans_map, flat_states, hsm)]
         return [entry_act(state)] + sub_acts
     assert False, "this cannot happen"
 

@@ -11,7 +11,7 @@ def assert_names(hsm, *state_names):
     assert hsm_names_set == set(state_names)
 
 
-class Test_all_submachines_respond_to_event(object):
+class Test_all_submachines_respond_to_event:
     def setup_class(self):
         states, trans = make_submachines_machine(use_logging=True)
         self.hsm = HSM(states, trans)
@@ -259,7 +259,7 @@ class Test_all_submachines_respond_to_event(object):
 # make sure that submachine remains in HSM state set even if it didin't
 # respond to the event
 
-class Test_submachines_some_respond(object):
+class Test_submachines_some_respond:
     def setup_class(self):
         states, trans = make_submachines_async_machine(use_logging=True)
         self.hsm = HSM(states, trans)

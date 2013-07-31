@@ -1,7 +1,4 @@
-from hsmpy import Event, State, Initial
-from hsmpy import Transition as T
-from hsmpy import InternalTransition as Internal
-from hsmpy import LocalTransition as Local
+from hsmpy import Event, State, Initial, T, Internal, Local, Choice
 
 
 def get_callback(key):
@@ -228,15 +225,14 @@ def make_nested_machine(use_logging):
 
 def make_submachines_machine(use_logging):
     """
-        Machine testing "orthogonal" regions functionality aka
-        SubmachinesState. It has two children states: *left* and *right*:
-        *left* is a SubmachinesState with one submachine, *right* is a
-        CompositeState with one simple State and one SubmachinesState with two
+        Machine for testing "orthogonal" regions functionality aka
+        submachines. It has two children states: *left* and *right*:
+        *left* is an orthogonal state with one submachine, *right* is a
+        composite state with one simple State and one orthogonal state with two
         submachines. All three submachines are identical and respond only to A
         and TERMINATE events. Toplevel machine responds to A, B and TERMINATE.
     """
     Cls = LoggingState if use_logging else State
-    submachines = []
     sub_states = {
         'top': Cls({
             'start': Cls(),
@@ -294,8 +290,9 @@ def make_submachines_machine(use_logging):
 
 
 def make_submachines_async_machine(use_logging):
-    """ Machine with two submachines, where one responds to A, and other
-        responds to B.
+    """ Machine for testing submachine behavior when not all submachines
+        respond to event. Returns machine with two submachines, where one
+        responds to A, and other responds to B.
     """
 
     Cls = LoggingState if use_logging else State
@@ -342,3 +339,70 @@ def make_submachines_async_machine(use_logging):
     }
 
     return (states, trans)
+
+
+def make_choice_machine(use_logging):
+    """
+        Machine for testing Choice transitions.
+        Returns machine with a pair of nested states A[B[C]] D[E[F]] (contained
+        within 'top' state), where A, B and C have Choice transitions to all
+        states including self. Initial transitions are also Choice. There are
+        variations in how transitions are specified, check the source.
+    """
+
+    Cls = LoggingState if use_logging else State
+
+    states = {
+        'top': Cls({
+            'A': Cls({
+                'B': Cls({
+                    'C': Cls(),
+                })
+            }),
+            'D': Cls({
+                'E': Cls({
+                    'F': Cls(),
+                })
+            })
+        })
+    }
+
+    init_key = lambda _, hsm: hsm.data.foo
+
+    transitions = {
+        'top': {
+            Initial: Choice({
+                1: 'A', 2: 'B', 3: 'C',
+                4: 'D', 5: 'E', 6: 'F'}, key=init_key, default='C')
+        },
+        'A': {
+            Initial: Choice({ 2: 'B', 3: 'C'}, key=init_key, default='C'),
+            A: Choice({
+                0: 'top',
+                1: 'A', 2: 'B', 3: 'C',
+                4: 'D', 5: 'E', 6: 'F'}, default='B'),
+        },
+        'B': {
+            Initial: Choice({ 3: 'C'}, key=init_key, default='C'),
+            A: Choice({
+                0: 'top',
+                1: 'A', 2: 'B', 3: 'C',
+                4: 'D', 5: 'E', 6: 'F'},
+                key=lambda e, h: e.data / 10, default='B'),  # custom key
+        },
+        'C': {
+            A: Choice({
+                0: 'top',
+                1: 'A', 2: 'B', 3: 'C',
+                4: 'D', 5: 'E', 6: 'F'}),  # no default
+        },
+        'D': {
+            Initial: T('F'),
+            A: T('B'),
+        },
+        'E': {
+            Initial: T('F'),
+        },
+    }
+
+    return (states, transitions)

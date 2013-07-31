@@ -6,12 +6,12 @@ from hsmpy.logic import (get_path,
 from hsmpy import State, HSM
 
 
-class MockState(object):
+class MockState:
     def __init__(self, parent):
         self.parent = parent
 
 
-class Test_get_path(object):
+class Test_get_path:
 
     def test_branching(self):
         root = MockState(parent=None)
@@ -82,7 +82,7 @@ class Test_get_path(object):
         assert entries == ['left', 'left_B']
 
 
-class Test_get_path_from_root(object):
+class Test_get_path_from_root:
 
     def test_single_node(self):
         root = MockState(parent=None)
@@ -168,7 +168,7 @@ class Test_get_path_from_root(object):
         assert state_names == ['root', 'right', 'right_A', 'deep']
 
 
-class Test_get_common_parent(object):
+class Test_get_common_parent:
 
     def test_single_node(self):
         root = MockState(parent=None)

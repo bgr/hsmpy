@@ -108,7 +108,7 @@ miro_machine_sequences = [
 ]
 
 
-class Test_transition_sequences_miro_machine(object):
+class Test_transition_sequences_miro_machine:
 
     def setup_class(self):
         states, trans = make_miro_machine(use_logging=False)
@@ -263,7 +263,7 @@ nested_machine_sequences = [
 ]
 
 
-class Test_transition_sequences_nested_machine(object):
+class Test_transition_sequences_nested_machine:
 
     def setup_class(self):
         states, trans = make_nested_machine(use_logging=False)
