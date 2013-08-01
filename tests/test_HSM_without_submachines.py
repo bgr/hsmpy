@@ -1,4 +1,5 @@
-from hsmpy import HSM, State, EventBus, Event, Initial, T, Internal
+from hsmpy import (HSM, State, EventBus, Event, Initial, T, Internal, Choice,
+                   Local)
 from hsmpy.logic import get_path_from_root, get_state_by_sig
 from reusable import (make_miro_machine, LoggingState, get_callback,
                       A, B, C, D, E, G, I)
@@ -885,3 +886,119 @@ class Test_internal_transitions:
             'leaf_internal_A': 1,
         }
         assert_curr_state(self.hsm, 'leaf')
+
+
+
+class Test_Choice_transitions:
+    def setup_class(self):
+        states = {
+            'top': LoggingState({
+                'A': LoggingState(),
+                'B': LoggingState(),
+                'C': LoggingState({
+                    'C_left': LoggingState(),
+                    'C_right': LoggingState(),
+                })
+            })
+        }
+
+        key = lambda _, hsm: hsm.data.foo % 3
+
+        trans = {
+            'top': {
+                Initial: Choice({ 0: 'A', 1: 'B', 2: 'C' },
+                                key=key, default='B')
+            },
+            'A': {
+                Step: Local('top'),
+            },
+            'B': {
+                Step: T('top'),
+            },
+            'C': {
+                Initial: Choice({ False: 'C_left', True: 'C_right' },
+                                key=lambda _, hsm: hsm.data.foo % 2 == 0,
+                                default='C_left'),
+                Step: T('top'),
+            },
+        }
+
+        self.eb = EventBus()
+        self.hsm = HSM(states, trans)
+
+    def test_start_in_B_foo_1(self):
+        self.hsm.data.foo = 1
+        self.hsm.start(self.eb)
+        assert_curr_state(self.hsm, 'B')
+        assert self.hsm.data._log == {
+            'top_enter': 1,
+            'B_enter': 1,
+        }
+
+    def test_in_A_foo_0(self):
+        self.hsm.data.foo = 0
+        self.eb.dispatch(Step())
+        assert_curr_state(self.hsm, 'A')
+        assert self.hsm.data._log == {
+            'B_enter': 1,
+
+            'B_exit': 1,
+            'top_exit': 1,
+            'top_enter': 2,
+            'A_enter': 1,
+        }
+
+    def test_in_C_right_foo_2(self):
+        self.hsm.data.foo = 2
+        self.eb.dispatch(Step())
+        assert_curr_state(self.hsm, 'C_right')
+        assert self.hsm.data._log == {
+            'B_enter': 1,
+            'B_exit': 1,
+            'top_exit': 1,
+            'top_enter': 2,
+            'A_enter': 1,
+
+            'A_exit': 1,
+            'C_enter': 1,
+            'C_right_enter': 1,
+        }
+
+    def test_in_C_left_foo_5(self):
+        self.hsm.data.foo = 5
+        self.eb.dispatch(Step())
+        assert_curr_state(self.hsm, 'C_left')
+        assert self.hsm.data._log == {
+            'B_enter': 1,
+            'B_exit': 1,
+            'A_enter': 1,
+            'A_exit': 1,
+            'C_right_enter': 1,
+
+            'C_right_exit': 1,
+            'C_exit': 1,
+            'top_exit': 2,
+            'top_enter': 3,
+            'C_enter': 2,
+            'C_left_enter': 1,
+        }
+
+    def test_in_A_left_foo_6(self):
+        self.hsm.data.foo = 6
+        self.eb.dispatch(Step())
+        assert_curr_state(self.hsm, 'A')
+        assert self.hsm.data._log == {
+            'B_enter': 1,
+            'B_exit': 1,
+            'A_exit': 1,
+            'C_right_enter': 1,
+            'C_right_exit': 1,
+            'C_enter': 2,
+            'C_left_enter': 1,
+
+            'C_left_exit': 1,
+            'C_exit': 2,
+            'top_exit': 3,
+            'top_enter': 4,
+            'A_enter': 2,
+        }
