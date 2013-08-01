@@ -380,7 +380,7 @@ def make_choice_machine(use_logging):
             A: Choice({
                 0: 'top',
                 1: 'A', 2: 'B', 3: 'C',
-                4: 'D', 5: 'E', 6: 'F'}, default='B'),
+                4: 'D', 5: 'E', 6: 'F'}, default='E'),
         },
         'B': {
             Initial: Choice({ 3: 'C'}, key=init_key, default='C'),
@@ -388,7 +388,7 @@ def make_choice_machine(use_logging):
                 0: 'top',
                 1: 'A', 2: 'B', 3: 'C',
                 4: 'D', 5: 'E', 6: 'F'},
-                key=lambda e, h: e.data / 10, default='B'),  # custom key
+                key=lambda e, h: e.data / 10.0, default='D'),  # custom key
         },
         'C': {
             A: Choice({

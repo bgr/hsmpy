@@ -87,9 +87,14 @@ def get_responses(tree_roots, event, trans_map, hsm):
             continue
         # maybe this state can respond since its substates didn't
         tran = trans_map.get(state.sig, {}).get(event.__class__)
-        if tran and tran.guard(event, hsm):
+        if tran and isinstance(tran, e._Choice):
+            key = tran.key(event, hsm)
+            target = tran.switch.get(key, tran.default)
+            if target:
+                # make a regular transition to keep rest of the code simple
+                resps += [ (node_tuple, e.Transition(target, tran.action)) ]
+        elif tran and tran.guard(event, hsm):
             resps += [ (node_tuple, tran) ]
-            continue
     return resps
 
 

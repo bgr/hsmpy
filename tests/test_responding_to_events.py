@@ -3,7 +3,7 @@ from hsmpy import HSM, State
 from hsmpy.logic import get_responses, get_state_by_sig, tree_from_state_set
 from reusable import (A, B, C, D, E, F, G, H, I, TERMINATE,
                       make_submachines_machine, make_submachines_async_machine,
-                      make_miro_machine, MockHSM)
+                      make_miro_machine, make_choice_machine, MockHSM)
 
 
 _ = 'ignored'
@@ -230,10 +230,68 @@ class Test_get_response_submachines_async_machine:
 ##################### test response of Choice transition ######################
 
 
+responding_submachines_choice_machine = [
+    (['top'], A(1), [], []),
+    (['A'], A(0), ['A'], ['top']),
+    (['A'], A(1), ['A'], ['A']),
+    (['A'], A(2), ['A'], ['B']),
+    (['A'], A(3), ['A'], ['C']),
+    (['A'], A(4), ['A'], ['D']),
+    (['A'], A(5), ['A'], ['E']),
+    (['A'], A(6), ['A'], ['F']),
+    (['A'], A(7), ['A'], ['E']),
+    (['A'], A('3'), ['A'], ['E']),
+
+    (['B'], A(0), ['B'], ['top']),
+    (['B'], A(1), ['B'], ['D']),  # B has custom key that divides by 10.0
+    (['B'], A(2), ['B'], ['D']),
+    (['B'], A(3), ['B'], ['D']),
+    (['B'], A(4), ['B'], ['D']),
+    (['B'], A(5), ['B'], ['D']),
+    (['B'], A(6), ['B'], ['D']),
+    (['B'], A(7), ['B'], ['D']),
+    (['B'], A(10), ['B'], ['A']),
+    (['B'], A(20), ['B'], ['B']),
+    (['B'], A(30), ['B'], ['C']),
+    (['B'], A(40), ['B'], ['D']),
+    (['B'], A(50), ['B'], ['E']),
+    (['B'], A(60), ['B'], ['F']),
+
+    (['C'], A(0), ['C'], ['top']),
+    (['C'], A(1), ['C'], ['A']),
+    (['C'], A(2), ['C'], ['B']),
+    (['C'], A(3), ['C'], ['C']),
+    (['C'], A(4), ['C'], ['D']),
+    (['C'], A(5), ['C'], ['E']),
+    (['C'], A(6), ['C'], ['F']),
+    (['C'], A(7), ['B'], ['D']),  # C has no default, B will respond
+]
+
+
 class Test_get_response_of_Choice_transition:
 
     def setup_class(self):
-        pass
+        states, trans = make_choice_machine(use_logging=False)
+        self.hsm = HSM(states, trans)
 
-    def test(self):
-        assert False
+    @pytest.mark.parametrize(
+        ('states', 'event', 'exp_resp_states', 'exp_tran_targets'),
+        responding_submachines_choice_machine)
+    def test_choice(self, states, event, exp_resp_states, exp_tran_targets):
+        state_set = set([get_state_by_sig((name,), self.hsm.flattened)
+                         for name in states])
+        tree = tree_from_state_set(state_set)
+        resps = get_responses(tree, event, self.hsm.trans, None)
+        print resps
+
+        if exp_resp_states or exp_tran_targets:
+            resp_subtrees, trans = zip(*resps)
+            assert len(resp_subtrees) == len(exp_resp_states)
+            resp_names = set([st.name for st, _ in resp_subtrees])
+            assert resp_names == set(exp_resp_states)
+
+            assert len(trans) == len(exp_tran_targets)
+            target_ids = set([State.sig_to_name(tr.target) for tr in trans])
+            assert target_ids == set(exp_tran_targets)
+        else:
+            assert resps == []
