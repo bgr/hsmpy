@@ -1,3 +1,6 @@
+import pytest
+xfail = pytest.mark.xfail
+
 from hsmpy import (HSM, State, EventBus, Event, Initial, T, Internal, Choice,
                    Local)
 from hsmpy.logic import get_path_from_root, get_state_by_sig
@@ -1002,3 +1005,53 @@ class Test_Choice_transitions:
             'top_enter': 4,
             'A_enter': 2,
         }
+
+
+@xfail(reason="Behavior is valid but it limits usage")
+class Test_Choice_transitions_change_and_read_in_same_step:
+    # tests the case where action in sequence changes some variable's value,
+    # and Choice transition that comes later in the sequence should be able to
+    # see updated value during the SAME transition sequence
+
+    def setup_class(self):
+        def set_foo(evt, hsm):
+            hsm.data.foo = 0
+
+        def update_foo(evt, hsm):
+            hsm.data.foo += 1
+
+        states = {
+            'top': State(on_enter=set_foo, states={
+                'states': State(on_enter=update_foo, states={
+                    'a': State(),
+                    'b': State(),
+                }),
+            }),
+        }
+
+        trans = {
+            'top': {
+                Initial: T('states'),
+            },
+            'states': {
+                Initial: Choice(
+                    {
+                        0: 'a',
+                        1: 'b',
+                    },
+                    default='a',
+                    key=lambda _, h: h.data.foo % 2
+                ),
+                A: T('states'),  # will reenter and update foo
+            }
+        }
+
+        self.hsm = HSM(states, trans)
+        self.eb = EventBus()
+
+    def test_foo_is_1_after_start(self):
+        assert self.hsm.data is not None
+        # will fail on line below because Choice tries to evaluate foo before
+        # it has been set
+        self.hsm.start(self.eb)
+        assert self.hsm.data.foo == 1

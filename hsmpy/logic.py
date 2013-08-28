@@ -1,5 +1,8 @@
 """Functions that parse, transform and query the HSM structure"""
 
+import logging
+_log = logging.getLogger(__name__)
+
 from copy import copy
 import elements as e
 
@@ -116,8 +119,13 @@ def get_response_sequence(response, event, trans_map, flat_states, hsm):
         return ([], [transition_action])  # no exits, no state entries
 
     if isinstance(transition, e._Choice):
-        key = transition.key(event, hsm)
-        target_name = transition.switch.get(key) or transition.default
+        try:
+            key = transition.key(event, hsm)
+            target_name = transition.switch.get(key) or transition.default
+        except AttributeError:
+            _log.warn("Caught AttributeError when checking Choice key, using "
+                      "default target state '{0}'".format(transition.default))
+            target_name = transition.default
         # choice condition can be unfulfilled in this implementation, that's
         # not really congruent with UML's statemachines but I don't see why it
         # should be a problem - regular transitions can have guards that
@@ -155,6 +163,14 @@ def entry_sequence(state, trans_map, flat_states, hsm):
         return [entry_act(state)]
     if state.kind == 'composite':
         init_tran = trans_map[state.sig][e.Initial]
+        # TODO:
+        # when Choice is encountered as Initial transition, current sequence
+        # must end there, because Choice key would have to be evaluated at that
+        # point to determine next state, and that evaluation might depend on
+        # side-effects of previous actions in the sequence, which haven't been
+        # executed yet at that point. This can be solved by terminating the
+        # sequence with an action that will, when executed, dispatch a new
+        # event and cause further entry actions to the leaf state
         if isinstance(init_tran, e._Choice):
             key = init_tran.key(e.Initial(), hsm)
             target_name = init_tran.switch.get(key) or init_tran.default
