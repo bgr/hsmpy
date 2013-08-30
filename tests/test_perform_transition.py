@@ -25,8 +25,7 @@ def check(hsm, state_name, Event, foo_before, foo_expected,
     # this call will execute exit & entry actions to update mock_hsm.data.foo
     new_state_set = perform_transition(
         state_set, Event(), hsm.trans, hsm.flattened, hsm)
-    print hsm.data._log
-    print expected_exits + expected_entries
+
     assert new_state_set == expected_state_set
 
     if foo_expected != _:  # only check 'foo' if we care about it

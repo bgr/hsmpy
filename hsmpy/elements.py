@@ -186,7 +186,8 @@ class _GenericTransition(object):
 
     def __init__(self, switch_dict, default_target,
                  key_func=None, action_func=None, guard_func=None):
-        assert isinstance(switch_dict, dict), "switch must be a dict"
+        if not isinstance(switch_dict, dict):
+            raise TypeError("switch must be a dict")
         self.switch = switch_dict.copy()
         self.default = default_target
         self.key = key_func or (lambda evt, _: evt.data)
@@ -244,7 +245,8 @@ class ChoiceTransition(_GenericTransition):
 
     def __init__(self, switch, default=None, key=None, action=None):
         super(ChoiceTransition, self).__init__(switch, default, key, action)
-        assert switch, "switch cannot be empty"
+        if not switch:
+            raise ValueError("switch dict cannot be empty")
 
 
 class _SingleTargetTransition(_GenericTransition):

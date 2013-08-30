@@ -1,3 +1,4 @@
+import pytest
 from hsmpy.logic import (get_state_by_sig,
                          get_incoming_transitions,
                          duplicates)
@@ -58,6 +59,21 @@ class Test_find_duplicate_state_names:
 
 
 
+class Test_invalid_transitions:
+    def test_Choice_raises_on_empty_switch_dict(self):
+        with pytest.raises(ValueError):
+            Choice({})
+
+    def test_Choice_raises_on_switch_not_dict(self):
+        with pytest.raises(TypeError):
+            Choice([])
+
+    def test_Internal_raises_when_no_target_specified(self):
+        with pytest.raises(TypeError):
+            Internal()
+
+
+
 class Test_structural_analysis:
 
     def setup_class(self):
@@ -101,7 +117,6 @@ class Test_structural_analysis:
             'left': {  # no initial transition
                 A: T('right'),
                 B: T('left'),  # loop
-                C: Internal(),
             },
             'right': {
                 A: Local('left_A'),  # invalid (target not local)
@@ -112,7 +127,6 @@ class Test_structural_analysis:
             'middle': {
                 Initial: T('top'),  # initial transition cannot go outside
                 A: T('right_A'),  # this shouldn't make right_A reachable
-                B: Internal(),
             },
             'bad_source_1': {  # nonexistent source
                 A: Local('bad_target_2'),  # invalid, but omitted in check
@@ -134,7 +148,6 @@ class Test_structural_analysis:
                           default='bad_target_4',  # nonexistent target
                           key=lambda evt, hsm: evt.data),
                 B: Local('top'),
-                C: Choice({}, default='left_B'),  # empty switch dict
             },
             'right_B': {
                 A: T('right_B'),  # loop, ok
@@ -150,7 +163,6 @@ class Test_structural_analysis:
             'choice_placeholder_1': {
                 A: Choice({ 2: 'bad_target' }),
                 B: Choice({ 2: 'choice_test_1' }, default='bad_target'),
-                C: Choice({}, default='choice_test_1'),
             }
         }
         self.hsm = HSM(states, trans, skip_validation=True)
@@ -209,8 +221,7 @@ class Test_structural_analysis:
 
         assert f('left_B', True) == sorted([
             ('right_B', Initial),
-            ('top', Initial),
-            ('right_A', C)])
+            ('top', Initial) ])
 
         assert f('right_B', False) == []
         assert f('right_B', True) == [('right_B', A)]
@@ -259,9 +270,7 @@ class Test_structural_analysis:
         assert sorted(res) == sorted([
             ('choice_placeholder_1', A),
             ('choice_placeholder_1', B),
-            ('choice_placeholder_1', C),
             ('right_A', A),
-            ('right_A', C),
             ('choice_test_1', Initial),
             #('right_A', Initial),  # these two are valid Choices, but not
             #('right_B', Initial),  # valid initial transitions

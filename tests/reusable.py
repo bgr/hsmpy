@@ -1,12 +1,5 @@
 import hsmpy
 from hsmpy import Initial, Event
-from copy import copy
-
-
-def get_callback(key):
-    def func(evt, hsm):
-        hsm.data[key] += 1
-    return func
 
 
 def get_state(kind, name, states):
@@ -36,8 +29,8 @@ def log(hsm, log_entry):
 
 class LoggingState(hsmpy.State):
     """Utility state that logs entries and exits into hsm.data._log dict."""
-    def __init__(self, states=None, log_id=None):
-        super(LoggingState, self).__init__(states)
+    def __init__(self, states=None, on_enter=None, on_exit=None, log_id=None):
+        super(LoggingState, self).__init__(states, on_enter, on_exit)
         self._log_id = log_id
 
     def enter(self, hsm):

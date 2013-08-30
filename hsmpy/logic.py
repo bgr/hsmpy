@@ -170,21 +170,21 @@ def enter(state, trans_map, flat_states, hsm, skip_root_entry_action=False):
         # until target. excluding last elem (target_state) since it'll be
         # added recursively
         _, _, to_enter = get_path(state, target_state)
+        to_enter.pop()
 
         # perform transition action, initial transitions don't have guards so
         # it's safe to call it without checking guard condition
         init_tran(event, hsm)
 
         # perform entry actions for states until transition target state
-        for st in to_enter[:-1]:
+        for st in to_enter:
             st._do_enter(hsm)
 
         # enter transition target recursively, it might be composite/orthogonal
         more_entries = enter(target_state, trans_map, flat_states, hsm)
         return [state] + to_enter + more_entries
     if state.kind == 'orthogonal':
-        init_tran(event, hsm)
-        # enter each submachine
+        # orthogonal state doesn't have init_tran, just enter each submachine
         return [state] + [st for substate in state.states for st in
                           enter(substate, trans_map, flat_states, hsm)]
     assert False, "this cannot happen"

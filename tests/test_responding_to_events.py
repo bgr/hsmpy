@@ -87,13 +87,14 @@ class Test_get_response_considering_guards:
             assert resp_subtrees[0][0].name == exp_responding_state
             tran = trans[0]
 
-            if exp_transition_target is not None:
-                assert State.sig_to_name(tran.target) == exp_transition_target
+            target_sig = tran.get_target(Event(), mock_hsm)
+            if exp_transition_target is None:
+                assert target_sig is None
             else:
-                assert tran.target is None
+                assert State.sig_to_name(target_sig) == exp_transition_target
 
-            tran.action(None, mock_hsm)  # this call might change 'foo' value
-                                         # event is not relevant
+            tran(None, mock_hsm)  # this call might change 'foo' value
+                                  # event is not relevant
 
         if foo_expected != 'ignored':
             assert mock_hsm.data.foo == foo_expected
@@ -291,7 +292,8 @@ class Test_get_response_of_Choice_transition:
             assert resp_names == set(exp_resp_states)
 
             assert len(trans) == len(exp_tran_targets)
-            target_ids = set([State.sig_to_name(tr.target) for tr in trans])
+            target_ids = set([State.sig_to_name(tr.get_target(event, self.hsm))
+                              for tr in trans])
             assert target_ids == set(exp_tran_targets)
         else:
             assert resps == []
