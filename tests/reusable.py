@@ -1,4 +1,6 @@
-from hsmpy import Event, State, Initial, T, Internal, Local, Choice
+import hsmpy
+from hsmpy import Initial, Event
+from copy import copy
 
 
 def get_callback(key):
@@ -8,7 +10,8 @@ def get_callback(key):
 
 
 def get_state(kind, name, states):
-    st = State(states)
+    assert False, "make logging"
+    st = hsmpy.State(states)
     st.name = name
     st.kind = kind
     return st
@@ -25,27 +28,56 @@ class MockHSM(object):
         self.data = Dump()
 
 
-class LoggingState(State):
+def log(hsm, log_entry):
+    if not hasattr(hsm.data, '_log'):
+        hsm.data._log = []
+    hsm.data._log += [log_entry]
+
+
+class LoggingState(hsmpy.State):
     """Utility state that logs entries and exits into hsm.data._log dict."""
     def __init__(self, states=None, log_id=None):
         super(LoggingState, self).__init__(states)
         self._log_id = log_id
 
-    def enter(self, evt, hsm):
-        self._log(hsm, 'enter')
+    def enter(self, hsm):
+        log(hsm, '{0}-entry'.format(self._log_id or self.name))
 
-    def exit(self, evt, hsm):
-        self._log(hsm, 'exit')
+    def exit(self, hsm):
+        log(hsm, '{0}-exit'.format(self._log_id or self.name))
 
-    def _log(self, hsm, action):
-        if not hasattr(hsm.data, '_log'):
-            hsm.data._log = {}
-        log = hsm.data._log
-        log_id = '{0}_{1}'.format((self._log_id or self.name), action)
-        if log_id in log:
-            log[log_id] += 1
-        else:
-            log[log_id] = 1
+
+class LoggingT(hsmpy.T):
+    def __call__(self, evt, hsm):
+        log(hsm, '{0}-{1}'.format(hsmpy.State.sig_to_name(self.source),
+                                  evt.__class__.__name__,))
+        super(LoggingT, self).__call__(evt, hsm)
+
+
+class LoggingLocal(hsmpy.LocalTransition):
+    def __call__(self, evt, hsm):
+        log(hsm, '{0}-{1}'.format(hsmpy.State.sig_to_name(self.source),
+                                  evt.__class__.__name__,))
+        super(LoggingLocal, self).__call__(evt, hsm)
+
+
+class LoggingInternal(hsmpy.InternalTransition):
+    def __call__(self, evt, hsm):
+        log(hsm, '{0}-{1}'.format(hsmpy.State.sig_to_name(self.source),
+                                  evt.__class__.__name__,))
+        super(LoggingInternal, self).__call__(evt, hsm)
+
+
+class LoggingChoice(hsmpy.ChoiceTransition):
+    def __call__(self, evt, hsm):
+        log(hsm, '{0}-{1}'.format(hsmpy.State.sig_to_name(self.source),
+                                  evt.__class__.__name__,))
+        super(LoggingChoice, self).__call__(evt, hsm)
+
+
+regular = [hsmpy.State, hsmpy.T, hsmpy.Local, hsmpy.Internal, hsmpy.Choice]
+logging = [LoggingState, LoggingT, LoggingLocal, LoggingInternal,
+           LoggingChoice]
 
 
 # events
@@ -72,7 +104,7 @@ def make_miro_machine(use_logging):
     """
     # transition guards
 
-    Cls = LoggingState if use_logging else State
+    S, T, Local, Internal, Choice = logging if use_logging else regular
 
     def foo_is_False(evt, hsm):
         return hsm.data.foo is False
@@ -93,18 +125,18 @@ def make_miro_machine(use_logging):
 
 
     states = {
-        'top': Cls({
-            's': Cls({
-                's1': Cls({
-                    's11': Cls(),
+        'top': S({
+            's': S({
+                's1': S({
+                    's11': S(),
                 }),
-                's2': Cls({
-                    's21': Cls({
-                        's211': Cls()
+                's2': S({
+                    's21': S({
+                        's211': S()
                     })
                 })
             }),
-            'final': Cls()
+            'final': S()
         })
     }
 
@@ -179,13 +211,14 @@ def make_nested_machine(use_logging):
             * outwards: C-(CB)->B, C-(CA)->A, B-(BA)->A (local and external)
     """
 
-    Cls = LoggingState if use_logging else State
+
+    S, T, Local, Internal, Choice = logging if use_logging else regular
 
     states = {
-        'top': Cls({
-            'A': Cls({
-                'B': Cls({
-                    'C': Cls(),
+        'top': S({
+            'A': S({
+                'B': S({
+                    'C': S(),
                 })
             })
         })
@@ -232,12 +265,14 @@ def make_submachines_machine(use_logging):
         submachines. All three submachines are identical and respond only to A
         and TERMINATE events. Toplevel machine responds to A, B and TERMINATE.
     """
-    Cls = LoggingState if use_logging else State
+
+    S, T, Local, Internal, Choice = logging if use_logging else regular
+
     sub_states = {
-        'top': Cls({
-            'start': Cls(),
-            'right': Cls(),
-            'final': Cls(),
+        'top': S({
+            'start': S(),
+            'right': S(),
+            'final': S(),
         })
     }
     sub_trans = {
@@ -254,13 +289,13 @@ def make_submachines_machine(use_logging):
     }
 
     states = {
-        'top': Cls({
-            'left': Cls([
+        'top': S({
+            'left': S([
                 (sub_states, sub_trans),
             ]),
-            'right': Cls({
-                'dumb': Cls(),
-                'subs': Cls([
+            'right': S({
+                'dumb': S(),
+                'subs': S([
                     (sub_states, sub_trans),
                     (sub_states, sub_trans),
                 ]),
@@ -295,12 +330,12 @@ def make_submachines_async_machine(use_logging):
         responds to A, and other responds to B.
     """
 
-    Cls = LoggingState if use_logging else State
+    S, T, Local, Internal, Choice = logging if use_logging else regular
 
     sub_states = {
-        'top': Cls({
-            'left': Cls(),
-            'right': Cls(),
+        'top': S({
+            'left': S(),
+            'right': S(),
         })
     }
 
@@ -324,8 +359,8 @@ def make_submachines_async_machine(use_logging):
 
 
     states = {
-        'top': Cls({
-            'subs': Cls([
+        'top': S({
+            'subs': S([
                 (sub_states, sub_1_trans),
                 (sub_states, sub_2_trans),
             ])
@@ -350,18 +385,18 @@ def make_choice_machine(use_logging):
         variations in how transitions are specified, check the source.
     """
 
-    Cls = LoggingState if use_logging else State
+    S, T, Local, Internal, Choice = logging if use_logging else regular
 
     states = {
-        'top': Cls({
-            'A': Cls({
-                'B': Cls({
-                    'C': Cls(),
+        'top': S({
+            'A': S({
+                'B': S({
+                    'C': S(),
                 })
             }),
-            'D': Cls({
-                'E': Cls({
-                    'F': Cls(),
+            'D': S({
+                'E': S({
+                    'F': S(),
                 })
             })
         })

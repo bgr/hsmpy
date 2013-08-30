@@ -1,17 +1,17 @@
 import pytest
 from hsmpy import HSM
-from hsmpy.logic import (get_merged_sequences, get_state_by_sig,
-                         get_path_from_root)
-from reusable import (make_miro_machine, make_nested_machine, MockHSM,
-                      A, B, C, D, E, F, G, H, I, TERMINATE, AB_ex, AC_ex,
+from hsmpy.logic import (get_state_by_sig, get_path_from_root,
+                         perform_transition)
+from reusable import (make_miro_machine, make_nested_machine,
+                      A, B, C, D, E, G, H, TERMINATE, AB_ex, AC_ex,
                       BC_ex, AB_loc, AC_loc, BC_loc, BA_ex, CA_ex, CB_ex,
                       BA_loc, CA_loc, CB_loc)
 
 
 def check(hsm, state_name, Event, foo_before, foo_expected,
           expected_leaf_state, expected_exits, expected_entries):
-    mock_hsm = MockHSM()
-    mock_hsm.data.foo = foo_before
+    hsm.data.foo = foo_before
+    hsm.data._log = []
     # state set and expected state set are not specified in the parameters list
     # so we'll build them on the fly - knowing the leaf states, state set is
     # path from root to that leaf state
@@ -22,22 +22,17 @@ def check(hsm, state_name, Event, foo_before, foo_expected,
         get_path_from_root(
             get_state_by_sig((expected_leaf_state,), hsm.flattened)))
 
-    exit_actions, entry_actions, new_state_set = get_merged_sequences(
-        state_set, Event(), hsm.trans, hsm.flattened, mock_hsm)
+    # this call will execute exit & entry actions to update mock_hsm.data.foo
+    new_state_set = perform_transition(
+        state_set, Event(), hsm.trans, hsm.flattened, hsm)
+    print hsm.data._log
+    print expected_exits + expected_entries
+    assert new_state_set == expected_state_set
 
-    exit_action_names = [str(act) for act in exit_actions]
-    entry_action_names = [str(act) for act in entry_actions]
+    if foo_expected != _:  # only check 'foo' if we care about it
+        assert hsm.data.foo == foo_expected
 
-    assert exit_action_names == expected_exits
-    assert entry_action_names == expected_entries
-    assert new_state_set  == expected_state_set
-
-    # perform actions to update 'foo' value in mock_hsm.data
-    [exit_act(None, mock_hsm) for exit_act in exit_actions]
-    [entry_act(None, mock_hsm) for entry_act in entry_actions]
-
-    if foo_expected != _:  # only if we care about the value of 'foo'
-        assert mock_hsm.data.foo == foo_expected
+    assert hsm.data._log == expected_exits + expected_entries
 
 
 
@@ -111,7 +106,7 @@ miro_machine_sequences = [
 class Test_transition_sequences_miro_machine:
 
     def setup_class(self):
-        states, trans = make_miro_machine(use_logging=False)
+        states, trans = make_miro_machine(use_logging=True)
         self.hsm = HSM(states, trans)
 
     @pytest.mark.parametrize(('state_name', 'Event', 'foo_before',
@@ -266,7 +261,7 @@ nested_machine_sequences = [
 class Test_transition_sequences_nested_machine:
 
     def setup_class(self):
-        states, trans = make_nested_machine(use_logging=False)
+        states, trans = make_nested_machine(use_logging=True)
         self.hsm = HSM(states, trans)
 
     @pytest.mark.parametrize(('state_name', 'Event', 'foo_before',

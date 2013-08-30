@@ -1,5 +1,6 @@
+import pytest
 from hsmpy import HSM
-from hsmpy.logic import entry_sequence, get_state_by_sig
+from hsmpy.logic import enter, get_state_by_sig
 from reusable import (make_miro_machine, make_submachines_machine,
                       make_choice_machine, MockHSM)
 
@@ -65,60 +66,40 @@ class Test_entry_sequence_submachines_machine:
         assert [str(act) for act in seq] == expected_action_names
 
 
-
+# this test is useless now that entry_sequence function doesn't return
+# complete sequence when it encounters Choice
 class Test_entry_sequence_choice_machine:
 
     def setup_class(self):
         states, trans = make_choice_machine(use_logging=False)
         self.hsm = HSM(states, trans)
 
-    def test_enter_top(self):
+    @pytest.mark.parametrize(('foo', 'expected_action_names'), [
+        #(1, ['top-entry', 'top-Initial', 'A-entry', 'A-Initial', 'B-entry',
+             #'C-entry']),
+        #(2, ['top-entry', 'top-Initial', 'A-entry', 'B-entry', 'B-Initial',
+             #'C-entry']),
+        #(3, ['top-entry', 'top-Initial', 'A-entry', 'B-entry',
+             #'C-entry']),
+        #('BLAH', ['top-entry', 'top-Initial', 'A-entry', 'B-entry',
+                  #'C-entry']),
+        #(4, ['top-entry', 'top-Initial', 'D-entry', 'D-Initial', 'E-entry',
+             #'F-entry']),
+        #(5, ['top-entry', 'top-Initial', 'D-entry', 'E-entry', 'E-Initial',
+             #'F-entry']),
+        #(6, ['top-entry', 'top-Initial', 'D-entry', 'E-entry',
+             #'F-entry']),
+        (1, ['top-entry', 'choice']),
+        (2, ['top-entry', 'choice']),
+        (3, ['top-entry', 'choice']),
+        (4, ['top-entry', 'choice']),
+        (5, ['top-entry', 'choice']),
+        (6, ['top-entry', 'choice']),
+        ('BLAH', ['top-entry', 'choice']),
+    ])
+    def test_enter_top(self, foo, expected_action_names):
         mock = MockHSM()
-        mock.data.foo = 1
-        expected_action_names = ['top-entry', 'top-Initial', 'A-entry',
-                                 'A-Initial', 'B-entry', 'C-entry']
-        seq = entry_sequence(self.hsm.root, self.hsm.trans,
-                             self.hsm.flattened, mock)
-        assert [str(act) for act in seq] == expected_action_names
-
-        mock.data.foo = 2
-        expected_action_names = ['top-entry', 'top-Initial', 'A-entry',
-                                 'B-entry', 'B-Initial', 'C-entry']
-        seq = entry_sequence(self.hsm.root, self.hsm.trans,
-                             self.hsm.flattened, mock)
-        assert [str(act) for act in seq] == expected_action_names
-
-        mock.data.foo = 3
-        expected_action_names = ['top-entry', 'top-Initial', 'A-entry',
-                                 'B-entry', 'C-entry']
-        seq = entry_sequence(self.hsm.root, self.hsm.trans,
-                             self.hsm.flattened, mock)
-        assert [str(act) for act in seq] == expected_action_names
-
-        mock.data.foo = 'BLAH'  # take default
-        expected_action_names = ['top-entry', 'top-Initial', 'A-entry',
-                                 'B-entry', 'C-entry']
-        seq = entry_sequence(self.hsm.root, self.hsm.trans,
-                             self.hsm.flattened, mock)
-        assert [str(act) for act in seq] == expected_action_names
-
-        mock.data.foo = 4
-        expected_action_names = ['top-entry', 'top-Initial', 'D-entry',
-                                 'D-Initial', 'E-entry', 'F-entry']
-        seq = entry_sequence(self.hsm.root, self.hsm.trans,
-                             self.hsm.flattened, mock)
-        assert [str(act) for act in seq] == expected_action_names
-
-        mock.data.foo = 5
-        expected_action_names = ['top-entry', 'top-Initial', 'D-entry',
-                                 'E-entry', 'E-Initial', 'F-entry']
-        seq = entry_sequence(self.hsm.root, self.hsm.trans,
-                             self.hsm.flattened, mock)
-        assert [str(act) for act in seq] == expected_action_names
-
-        mock.data.foo = 6
-        expected_action_names = ['top-entry', 'top-Initial', 'D-entry',
-                                 'E-entry', 'F-entry']
+        mock.data.foo = foo
         seq = entry_sequence(self.hsm.root, self.hsm.trans,
                              self.hsm.flattened, mock)
         assert [str(act) for act in seq] == expected_action_names
@@ -131,15 +112,15 @@ class Test_entry_sequence_choice_machine:
         for key in [1, 3, 4, 5, 6, 'asd']:
             mock.data.foo = key
 
-            expected_action_names = ['A-entry', 'A-Initial', 'B-entry',
-                                     'C-entry']
+            #expected_action_names = ['A-entry', 'A-Initial', 'B-entry',
+                                     #'C-entry']
+            expected_action_names = ['A-entry', 'choice']
             seq = entry_sequence(A_state, self.hsm.trans,
                                  self.hsm.flattened, mock)
             assert [str(act) for act in seq] == expected_action_names
 
         mock.data.foo = 2
-        expected_action_names = ['A-entry', 'A-Initial', 'B-entry',
-                                 'B-Initial', 'C-entry']
+        expected_action_names = ['A-entry', 'choice']
         seq = entry_sequence(A_state, self.hsm.trans,
                              self.hsm.flattened, mock)
         assert [str(act) for act in seq] == expected_action_names
@@ -152,7 +133,7 @@ class Test_entry_sequence_choice_machine:
         for key in [3, 4, 5, 6, 'blah']:
             mock.data.foo = key
 
-            expected_action_names = ['B-entry', 'B-Initial', 'C-entry']
+            expected_action_names = ['B-entry', 'choice']
             seq = entry_sequence(B_state, self.hsm.trans,
                                  self.hsm.flattened, mock)
             assert [str(act) for act in seq] == expected_action_names

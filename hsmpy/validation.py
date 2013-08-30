@@ -30,8 +30,8 @@ def find_nonexistent_transition_targets(flat_state_list, trans_dict):
     return [tran.target
             for dct in trans_dict.values()  # transitions dict for state
             for tran in dct.values()  # transition in state's transitions dict
-            if (not isinstance(tran, e._Internal)  # don't have targets
-                and not isinstance(tran, e._Choice)  # handled separately
+            if (not isinstance(tran, e.ChoiceTransition)  # checked elsewhere
+                and not isinstance(tran, e.InternalTransition)  # no targets
                 and tran.target not in state_names)]  # no corresponding state
 
 
@@ -69,11 +69,11 @@ def find_invalid_initial_transitions(flat_state_list, trans_dict):
         get_state = lambda sig: l.get_state_by_sig(sig, flat_state_list)
         is_child = lambda sg: state in l.get_path_from_root(get_state(sg))[:-1]
 
-        if isinstance(init_tran, e._Local):
+        if isinstance(init_tran, e.LocalTransition):
             msg = 'cannot use LocalTransition for initial'
-        elif isinstance(init_tran, e._Internal):
+        elif isinstance(init_tran, e.InternalTransition):
             msg = 'cannot use InternalTransition for initial'
-        elif isinstance(init_tran, e._Choice):
+        elif isinstance(init_tran, e.ChoiceTransition):
             if init_tran.default is None:
                 msg = ('must declare default when using Choice as initial')
             elif get_state(init_tran.default) is None:
@@ -119,7 +119,7 @@ def find_invalid_local_transitions(flat_state_list, trans_dict):
             for st_sig, outgoing in trans_dict.items()
             for evt, tran in outgoing.items()
             if st_sig not in bad_state_sigs and
-            isinstance(tran, e._Local) and (
+            isinstance(tran, e.LocalTransition) and (
             st_sig == tran.target or  # loop
             common_parent(st_sig, tran.target) not in [st_sig, tran.target])]
 
@@ -136,7 +136,7 @@ def find_invalid_choice_transitions(flat_state_list, trans_dict):
     choice_trans = [(tran, src_sig, evt)
                     for src_sig, dct in trans_dict.items()
                     for evt, tran in dct.items()
-                    if isinstance(tran, e._Choice)]
+                    if isinstance(tran, e.ChoiceTransition)]
 
     targets_ok = lambda tr: all(sg in state_sigs for sg in tr.switch.values())
     default_ok = lambda tr: tr.default is None or tr.default in state_sigs
@@ -168,11 +168,8 @@ def find_unreachable_states(top_state, flat_state_list, trans_dict):
             visit(parent, visited)
         # visit transition targets going out of current state
         for tran in trans_dict.get(state.sig, {}).values():
-            if isinstance(tran, e._Choice):
-                to_visit = [l.get_state_by_sig(sig, flat_state_list)
-                            for sig in tran.switch.values() + [tran.default]]
-            else:
-                to_visit = [l.get_state_by_sig(tran.target, flat_state_list)]
+            to_visit = [l.get_state_by_sig(sig, flat_state_list)
+                        for sig in tran.switch.values() + [tran.default]]
             # nonexistent states (None values in list) are checked elsewhere
             [visit(st, visited) for st in to_visit if st is not None]
         return visited

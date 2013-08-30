@@ -1,9 +1,8 @@
 import logging
-from collections import namedtuple
 from eventbus import Event
 from itertools import izip_longest
 import re
-from logic import parse, get_events, get_merged_sequences, entry_sequence
+from logic import parse, get_events, perform_transition, enter
 from validation import (find_unreachable_states,
                         find_duplicate_sigs,
                         find_nonexistent_transition_sources,
@@ -49,30 +48,30 @@ class State(object):
                       makes this state a container for sub-machines defined by
                       those tuples
             on_enter : function
-                function to be called when state is entered, after state's
-                *enter* method
+                function taking one argument - HSM instance, that will be
+                called when state is entered, after state's *enter* method
             on_exit : function
-                function to be called when state is exited, before state's
-                *exit* method
+                function taking one argument - HSM instance, that will be
+                called when state is exited, before state's *exit* method
         """
         self.states = {} if states is None else states
         self.parent = None
         self.sig = ('unnamed',)
         self.kind = 'unknown'
-        self.on_enter = on_enter or do_nothing
-        self.on_exit = on_exit or do_nothing
+        self.on_enter = on_enter or (lambda _: None)
+        self.on_exit = on_exit or (lambda _: None)
 
-    def _enter(self, evt, hsm):
+    def _do_enter(self, hsm):
         """Used internally by HSM"""
-        self.enter(evt, hsm)
-        self.on_enter(evt, hsm)
+        self.enter(hsm)
+        self.on_enter(hsm)
 
-    def _exit(self, evt, hsm):
+    def _do_exit(self, hsm):
         """Used internally by HSM"""
-        self.on_exit(evt, hsm)
-        self.exit(evt, hsm)
+        self.on_exit(hsm)
+        self.exit(hsm)
 
-    def enter(self, evt, hsm):  # override
+    def enter(self, hsm):  # for overriding by user
         """
             Called when entering this state, triggered by some transition.
 
@@ -84,15 +83,13 @@ class State(object):
 
             Parameters
             ----------
-            evt : Event
-                event instance that triggered the transition
             hsm : HSM
                 instance of HSM that this state is part of, useful for
                 accessing data shared between all states
         """
         pass
 
-    def exit(self, evt, hsm):  # override
+    def exit(self, hsm):  # for overriding by user
         """
             Called when exiting this state, triggered by some transition.
 
@@ -104,8 +101,6 @@ class State(object):
 
             Parameters
             ----------
-            evt : Event
-                event instance that triggered the transition
             hsm : HSM
                 instance of HSM that this state is part of, useful for
                 accessing data shared between all states
@@ -174,6 +169,7 @@ class State(object):
                 and check_states(self, other))
 
 
+
 class Initial(Event):
     """Used for defining initial transitions of composite states."""
     pass
@@ -185,56 +181,33 @@ do_nothing = lambda evt, hsm: None  # action does nothing by default
 always_true = lambda evt, hsm: True  # make guard always pass by default
 
 
-def _make_tran(Which, target, action=None, guard=None):
-    return Which(target, action or do_nothing, guard or always_true)
+class _GenericTransition(object):
+    __slots__ = ['switch', 'default_key', 'key', 'action', 'guard', 'source']
+
+    def __init__(self, switch_dict, default_target,
+                 key_func=None, action_func=None, guard_func=None):
+        assert isinstance(switch_dict, dict), "switch must be a dict"
+        self.switch = switch_dict.copy()
+        self.default = default_target
+        self.key = key_func or (lambda evt, _: evt.data)
+        self.action = action_func or do_nothing
+        self.guard = guard_func or always_true
+        self.source = None  # will be set by reformat function
+
+    def get_target(self, evt, hsm):
+        k = self.key(evt, hsm)
+        return self.switch.get(k) or self.default
+
+    def __call__(self, evt, hsm):
+        return self.action(evt, hsm)
+
+    def __repr__(self):
+        return '{0}(switch={1}, source={2})'.format(self.__class__.__name__,
+                                                    self.switch, self.source)
 
 
-_Transition = namedtuple('Transition', 'target, action, guard')
-_Local = namedtuple('LocalTransition', 'target, action, guard')
-_Internal = namedtuple('InternalTransition', 'target, action, guard')
-_Choice = namedtuple('ChoiceTransition', 'switch, default, key, action')
 
-
-def Transition(target, action=None, guard=None):
-    """
-        Regular transition. Also used for initial transitions.
-
-        Parameters
-        ----------
-        target : str
-            name of the target state (in case of InternalTransition target
-            is fixed to None)
-        action : function/callable (optional)
-            function to call when performing the transition, it must take
-            two parameters: event instance and reference to HSM instance
-        guard : function/callable (optional)
-            function that evaluates to True/False, deciding whether to take
-            this transiton or leave it to some other; must take two
-            parameters: event instance and reference to HSM instance
-    """
-    return _make_tran(_Transition, target, action, guard)
-
-
-def LocalTransition(target, action=None, guard=None):
-    """
-        Local transition.
-
-        Valid only from parent state to child state or vice versa. Doesn't
-        cause exiting from parent state.
-    """
-    return _make_tran(_Local, target, action, guard)
-
-
-def InternalTransition(action=None, guard=None):
-    """
-        Internal transition.
-
-        Doesn't have a target state. Doesn't cause change of states.
-    """
-    return _make_tran(_Internal, None, action, guard)
-
-
-def ChoiceTransition(switch, default=None, key=None, action=None):
+class ChoiceTransition(_GenericTransition):
     """
         Choice transition.
 
@@ -252,41 +225,94 @@ def ChoiceTransition(switch, default=None, key=None, action=None):
             have a key returned by *key* function (and in that case if
             *default* is left unspecified no transition will be performed)
         key : function (optional)
-            function that takes two parameters: event instance and HSM
-            instance, and returns a value that matches *switch* dict keys.
+            function that takes two parameters - event and HSM instance, and
+            returns values that match *switch* dict's keys.
             if unspecified, event_instance.data will be used as key
-        action : func (optional)
-            action to be performed when transition is performed
+        action : function/callable (optional)
+            function to call when performing the transition, it must take
+            two parameters: event instance and reference to HSM instance
+        guard : function/callable (optional)
+            function that takes two parameters - event and HSM instance, and
+            evaluates to True/False, deciding whether to perform transition:
+                * True - source state of this transition responds and
+                  transition is performed,
+                * False - HSM will check up the state tree if some parent state
+                  to responds
+            if omitted, a guard function that always returns True is used
+            see Transition
     """
-    default_key = lambda evt, hsm: evt.data
-    return _Choice(switch, default, key or default_key, action or do_nothing)
+
+    def __init__(self, switch, default=None, key=None, action=None):
+        super(ChoiceTransition, self).__init__(switch, default, key, action)
+        assert switch, "switch cannot be empty"
 
 
-class Action(namedtuple('Action', 'name, function, item')):
+class _SingleTargetTransition(_GenericTransition):
+    def __init__(self, target, action=None, guard=None):
+        switch = { 0: target }
+        super(_SingleTargetTransition, self).__init__(switch, None, None,
+                                                      action, guard)
+
+    def get_target(self, *_, **__):
+        return self.switch.get(0)
+
+    @property
+    def target(self):
+        return self.get_target()
+
+    def __repr__(self):
+        return '{0}(target={1}, source={2})'.format(self.__class__.__name__,
+                                                    self.target, self.source)
+
+
+class Transition(_SingleTargetTransition):
     """
-        Action's purpose is to adapt different functions into common
-        interface required when executing transitions.
-        Action is a callable that take two parameters: event instance and
-        HSM instance which are relayed to wrapped function.
-        Actions are used (instantiated and called) internally and are not
-        relevant for end users.
+        Regular (external) transition. Also used for initial transitions.
 
         Parameters
         ----------
-        name : str
-            descriptive name of action, useful for tests and debugging
-        function : function/callable
-            function to wrap, it must take two parameters: event instance
-            and HSM instance
-        item : State or Transition
-            original object whose function is wrapped
+        target : str
+            name of the target state (in case of InternalTransition target
+            is fixed to None)
+        action : function/callable (optional)
+            function to call when performing the transition, it must take
+            two parameters: event instance and reference to HSM instance
+        guard : function/callable (optional)
+            function that takes two parameters - event and HSM instance, and
+            evaluates to True/False, deciding whether to perform transition:
+                * True - source state of this transition responds and
+                  transition is performed,
+                * False - HSM will check up the state tree if some parent state
+                  to responds
+            if omitted, a guard function that always returns True is used
     """
-    def __call__(self, event, hsm):
-        """Invokes the wrapped function"""
-        return self.function(event, hsm)
+    pass
 
-    def __repr__(self):
-        return self.name
+
+class LocalTransition(_SingleTargetTransition):
+    """
+        Local transition.
+
+        Valid only from parent state to child state or vice versa. Doesn't
+        cause exiting from parent state.
+    """
+    pass
+
+
+class InternalTransition(_GenericTransition):
+    """
+        Internal transition.
+
+        Doesn't have a target state. Doesn't cause change of states.
+    """
+
+    def __init__(self, action, guard=None):
+        super(InternalTransition, self).__init__({}, None, None, action, guard)
+
+    def get_target(self, *_, **__):
+        return None
+
+
 
 
 class HSM(object):
@@ -353,15 +379,15 @@ class HSM(object):
 
         def kick_start(evt=None):
             _log.debug("Starting HSM, entering '{0}' state".format(self.root))
-            actions = entry_sequence(self.root, self.trans,
-                                     self.flattened, self)
-            self._perform_actions(actions, Initial())
-            self.current_state_set = set(act.item for act in actions
-                                         if isinstance(act.item, State))
+            entered = enter(self.root, self.trans, self.flattened, self)
+            self.current_state_set = set(entered)
+            _log.debug("HSM is now in states: " +
+                       ', '.join(st.name for st in entered))
 
         self.eb.register(KickStart, kick_start)
         self.eb.dispatch(KickStart())
         self.eb.unregister(KickStart, kick_start)
+
 
     def stop(self):
         """
@@ -378,12 +404,6 @@ class HSM(object):
         self._running = False
         _log.debug('HSM stopped')
 
-    def _perform_actions(self, actions, event):
-            _log.debug("Performing actions for event {0}: {1}".format(
-                event.__class__.__name__,
-                ', '.join(["'{0}'".format(act.name) for act in actions])
-            ))
-            [act(event, self) for act in actions]
 
     def _handle_event(self, event):
         """
@@ -391,17 +411,18 @@ class HSM(object):
             it if none of the states in HSM's current state set is interested
             in that event (or guards don't pass).
         """
-        exits, entries, new_state_set = get_merged_sequences(
+        _log.debug("Performing transition for "
+                   "event {0}".format(event.__class__.__name__))
+
+        new_state_set = perform_transition(
             self.current_state_set, event, self.trans, self.flattened, self)
 
         assert new_state_set, "New state set cannot possibly be empty"
-
-        actions = exits + entries
-        self._perform_actions(actions, event)
-
         self.current_state_set = new_state_set
-        _log.debug("HSM is now in states: {0}".format(
-            ', '.join(st.name for st in self.current_state_set)))
+
+        _log.debug("HSM is now in states: " +
+                   ', '.join(st.name for st in self.current_state_set))
+
 
     def _validate(self, original_states, trans, flat):
         """
