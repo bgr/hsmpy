@@ -2,16 +2,18 @@ import hsmpy
 from hsmpy import Initial, Event
 
 
-def get_state(kind, name, states):
-    assert False, "make logging"
-    st = hsmpy.State(states)
+def get_state(kind, name, states, use_logging):
+    st = LoggingState(states) if use_logging else hsmpy.State(states)
     st.name = name
     st.kind = kind
     return st
 
-orthogonal = lambda name, states: get_state('orthogonal', name, states)
-composite = lambda name, states: get_state('composite', name, states)
-leaf = lambda name: get_state('leaf', name, [])
+orthogonal = lambda name, states: get_state('orthogonal', name, states, False)
+composite = lambda name, states: get_state('composite', name, states, False)
+leaf = lambda name: get_state('leaf', name, [], False)
+l_orthogonal = lambda name, states: get_state('orthogonal', name, states, True)
+l_composite = lambda name, states: get_state('composite', name, states, True)
+l_leaf = lambda name: get_state('leaf', name, [], True)
 
 
 class MockHSM(object):
@@ -68,9 +70,10 @@ class LoggingChoice(hsmpy.ChoiceTransition):
         super(LoggingChoice, self).__call__(evt, hsm)
 
 
-regular = [hsmpy.State, hsmpy.T, hsmpy.Local, hsmpy.Internal, hsmpy.Choice]
-logging = [LoggingState, LoggingT, LoggingLocal, LoggingInternal,
-           LoggingChoice]
+regular_stuff = [hsmpy.State, hsmpy.T, hsmpy.Local, hsmpy.Internal,
+                 hsmpy.Choice]
+logging_stuff = [LoggingState, LoggingT, LoggingLocal, LoggingInternal,
+                 LoggingChoice]
 
 
 # events
@@ -97,7 +100,8 @@ def make_miro_machine(use_logging):
     """
     # transition guards
 
-    S, T, Local, Internal, Choice = logging if use_logging else regular
+    S, T, Local, Internal, Choice = (logging_stuff if use_logging
+                                     else regular_stuff)
 
     def foo_is_False(evt, hsm):
         return hsm.data.foo is False
@@ -205,7 +209,8 @@ def make_nested_machine(use_logging):
     """
 
 
-    S, T, Local, Internal, Choice = logging if use_logging else regular
+    S, T, Local, Internal, Choice = (logging_stuff if use_logging
+                                     else regular_stuff)
 
     states = {
         'top': S({
@@ -259,7 +264,8 @@ def make_submachines_machine(use_logging):
         and TERMINATE events. Toplevel machine responds to A, B and TERMINATE.
     """
 
-    S, T, Local, Internal, Choice = logging if use_logging else regular
+    S, T, Local, Internal, Choice = (logging_stuff if use_logging
+                                     else regular_stuff)
 
     sub_states = {
         'top': S({
@@ -323,7 +329,8 @@ def make_submachines_async_machine(use_logging):
         responds to A, and other responds to B.
     """
 
-    S, T, Local, Internal, Choice = logging if use_logging else regular
+    S, T, Local, Internal, Choice = (logging_stuff if use_logging
+                                     else regular_stuff)
 
     sub_states = {
         'top': S({
@@ -378,7 +385,8 @@ def make_choice_machine(use_logging):
         variations in how transitions are specified, check the source.
     """
 
-    S, T, Local, Internal, Choice = logging if use_logging else regular
+    S, T, Local, Internal, Choice = (logging_stuff if use_logging
+                                     else regular_stuff)
 
     states = {
         'top': S({

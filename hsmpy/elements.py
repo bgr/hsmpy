@@ -33,6 +33,8 @@ re_last_name = re.compile("""
                         """, re.VERBOSE)
 
 
+
+
 class State(object):
     def __init__(self, states=None, on_enter=None, on_exit=None):
         """
@@ -58,8 +60,8 @@ class State(object):
         self.parent = None
         self.sig = ('unnamed',)
         self.kind = 'unknown'
-        self.on_enter = on_enter or (lambda _: None)
-        self.on_exit = on_exit or (lambda _: None)
+        self.on_enter = on_enter or do_nothing
+        self.on_exit = on_exit or do_nothing
 
     def _do_enter(self, hsm):
         """Used internally by HSM"""
@@ -177,9 +179,9 @@ class Initial(Event):
 
 # transitions
 
-do_nothing = lambda evt, hsm: None  # action does nothing by default
-always_true = lambda evt, hsm: True  # make guard always pass by default
-
+do_nothing = lambda *_, **__: None  # action does nothing by default
+always_true = lambda *_, **__: True  # make guard always pass by default
+default_key = lambda evt, _: evt.data
 
 class _GenericTransition(object):
     __slots__ = ['switch', 'default_key', 'key', 'action', 'guard', 'source']
@@ -190,7 +192,7 @@ class _GenericTransition(object):
             raise TypeError("switch must be a dict")
         self.switch = switch_dict.copy()
         self.default = default_target
-        self.key = key_func or (lambda evt, _: evt.data)
+        self.key = key_func or default_key
         self.action = action_func or do_nothing
         self.guard = guard_func or always_true
         self.source = None  # will be set by reformat function
@@ -205,6 +207,14 @@ class _GenericTransition(object):
     def __repr__(self):
         return '{0}(switch={1}, source={2})'.format(self.__class__.__name__,
                                                     self.switch, self.source)
+
+    @property
+    def __attrs(self):
+        # doesn't consider source
+        return (self.switch, self.default, self.key, self.action, self.guard)
+
+    def __eq__(self, other):
+        return type(other) == type(self) and self.__attrs == other.__attrs
 
 
 

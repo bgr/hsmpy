@@ -283,7 +283,6 @@ class Test_get_response_of_Choice_transition:
                          for name in states])
         tree = tree_from_state_set(state_set)
         resps = get_responses(tree, event, self.hsm.trans, None)
-        print resps
 
         if exp_resp_states or exp_tran_targets:
             resp_subtrees, trans = zip(*resps)

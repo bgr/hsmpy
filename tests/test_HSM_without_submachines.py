@@ -3,9 +3,9 @@ xfail = pytest.mark.xfail
 
 from hsmpy import HSM, EventBus, Event, Initial
 from hsmpy.logic import get_path_from_root, get_state_by_sig
-from reusable import make_miro_machine, logging, A, B, C, D, E, G, I
+from reusable import make_miro_machine, logging_stuff, A, B, C, D, E, G, I
 
-S, T, Local, Internal, Choice = logging
+S, T, Local, Internal, Choice = logging_stuff
 
 
 def assert_curr_state(hsm, leaf_name):

@@ -1,6 +1,6 @@
 from hsmpy.logic import reformat
-from hsmpy import State, Initial, Local
-from reusable import leaf, composite, orthogonal, make_miro_machine, A, T
+from hsmpy import Initial, State, T, Local
+from reusable import leaf, composite, orthogonal, make_miro_machine, A
 
 
 class Test_reformat:

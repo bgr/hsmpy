@@ -1,11 +1,10 @@
 import pytest
-from hsmpy.logic import (get_events,
-                         flatten,)
+from hsmpy.logic import get_events, flatten
 from hsmpy import State, HSM, Event, Initial, Internal, T
 from reusable import (make_miro_machine, make_nested_machine, leaf, composite,
-                      orthogonal, A, B, C, D, E, F, G, H, I, TERMINATE, AB_ex,
-                      AC_ex, BC_ex, AB_loc, AC_loc, BC_loc, BA_ex, CA_ex,
-                      CB_ex, BA_loc, CA_loc, CB_loc)
+                      orthogonal, LoggingState, A, B, C, D, E, F, G, H, I,
+                      TERMINATE, AB_ex, AC_ex, BC_ex, AB_loc, AC_loc, BC_loc,
+                      BA_ex, CA_ex, CB_ex, BA_loc, CA_loc, CB_loc)
 
 
 class Test_get_events:
@@ -52,7 +51,7 @@ class Test_get_events_with_subclasses:
             'top': {
                 Initial: T('left'),
                 A1: T('right'),
-                B1: Internal(),
+                B1: Internal(lambda _, __: _),
             },
             'left': {
                 RootEventA: T('left'),  # also responds to A1 and A2
@@ -125,37 +124,37 @@ class Test_flatten:
                                         's21', 's211'])
 
 
-
+@pytest.mark.parametrize('S', [State, LoggingState])
 class Test_State_equals:
-    def test_fresh(self):
-        assert State() == State()
+    def test_fresh(self, S):
+        assert S() == S()
 
-    def test_names(self):
-        s1 = State()
+    def test_names(self, S):
+        s1 = S()
         s1.name = 'asd'
-        s2 = State()
+        s2 = S()
         assert not s1 == s2
         s2.name = 'asd'
         assert s1 == s2
 
-    def test_all_attribs(self):
-        par1 = State()
+    def test_all_attribs(self, S):
+        par1 = S()
         par1.name = 'parent'
-        par2 = State()
+        par2 = S()
         par2.name = 'parent'
         assert par1 == par2
 
         # lambdas must be same instance
         action = lambda a, b: a + b
 
-        s1 = State()
+        s1 = S()
         s1.name = 'name'
         s1.parent = par1
         s1.kind = 'leaf'
         s1.on_enter = action
         s1.on_exit = action
 
-        s2 = State()
+        s2 = S()
         assert not s1 == s2
         s2.name = 'name'
         assert not s1 == s2
@@ -168,53 +167,53 @@ class Test_State_equals:
         s2.on_exit = action
         assert s1 == s2  # now it's same
 
-    def test_children_empty(self):
-        s1 = State()
-        s2 = State()
+    def test_children_empty(self, S):
+        s1 = S()
+        s2 = S()
 
         s1.states = []
         assert not s1 == s2  # s2 has {}
         s2.states = []
         assert s1 == s2
 
-    def test_children_dict(self):
-        s1 = State()
-        s2 = State()
+    def test_children_dict(self, S):
+        s1 = S()
+        s2 = S()
         s1.states = {1: 'a', 2: {}}
         s2.states = {1: 'a', 2: {}}
         assert s1 == s2
         s1.states = {1: 'a', 2: {3: {}}}
         assert not s1 == s2
 
-        s1.states = [State(), State()]
-        s2.states = [State(), State()]
+        s1.states = [S(), S()]
+        s2.states = [S(), S()]
         assert s1 == s2
 
-        s1.states = { 'a': State(), 'b': State() }
-        s2.states = { 'a': State(), 'b': State() }
+        s1.states = { 'a': S(), 'b': S() }
+        s2.states = { 'a': S(), 'b': S() }
         assert s1 == s2
 
-    def test_children_dict_nested(self):
-        s1 = State()
-        s2 = State()
+    def test_children_dict_nested(self, S):
+        s1 = S()
+        s2 = S()
         s1.states = {
-            'a': State({
-                's': State(),
-                's2': State() }),
-            'b': State()
+            'a': S({
+                's': S(),
+                's2': S() }),
+            'b': S()
         }
         assert not s1 == s2
         s2.states = {
-            'a': State({
-                's': State(),
-                's2': State() }),
-            'b': State()
+            'a': S({
+                's': S(),
+                's2': S() }),
+            'b': S()
         }
         assert s1 == s2
 
-    def test_children_list_different_order(self):
-        s1 = State()
-        s2 = State()
+    def test_children_list_different_order(self, S):
+        s1 = S()
+        s2 = S()
         s1.states = [leaf('1'), leaf('2'), leaf('3')]
         s2.states = [leaf('1'), leaf('2'), leaf('3')]
         assert s1 == s2
@@ -223,27 +222,27 @@ class Test_State_equals:
         s2.states = [leaf('3'), leaf('999'), leaf('2')]
         assert not s1 == s2
 
-    def test_children_list_nested(self):
-        s1 = State()
-        s2 = State()
+    def test_children_list_nested(self, S):
+        s1 = S()
+        s2 = S()
         s1.states = [
-            State([State(), State()]),
-            State([State(), State()]),
+            S([S(), S()]),
+            S([S(), S()]),
         ]
         s2.states = [
-            State([State()]),
-            State([State(), State()]),
+            S([S()]),
+            S([S(), S()]),
         ]
         assert not s1 == s2
         s2.states = [
-            State([State(), State()]),
-            State([State(), State()]),
+            S([S(), S()]),
+            S([S(), S()]),
         ]
         assert s1 == s2
 
-    def test_children_list_different_order_nested(self):
-        s1 = State()
-        s2 = State()
+    def test_children_list_different_order_nested(self, S):
+        s1 = S()
+        s2 = S()
         s1.states = [
             composite('A', [leaf('1'), leaf('2')]),
             composite('B', [leaf('3'), leaf('4')]),
@@ -264,11 +263,11 @@ class Test_State_equals:
         ]
         assert not s1 == s2
 
-    def test_with_different_subclasses(self):
-        class SubState(State):
+    def test_with_different_subclasses(self, S):
+        class SubState(S):
             pass
 
-        s1 = State()
+        s1 = S()
         s2 = SubState()
         assert not s1 == s2
 
@@ -277,23 +276,23 @@ class Test_State_equals:
         assert s1 == s2
 
         s1.states = {
-            'a': State({
-                's': State(),
-                's2': State() }),
-            'b': State()
+            'a': S({
+                's': S(),
+                's2': S() }),
+            'b': S()
         }
         s2.states = {
-            'a': State({
+            'a': S({
                 's': SubState(),
-                's2': State() }),
-            'b': State()
+                's2': S() }),
+            'b': S()
         }
         assert not s1 == s2
         s1.states = {
-            'a': State({
+            'a': S({
                 's': SubState(),
-                's2': State() }),
-            'b': State()
+                's2': S() }),
+            'b': S()
         }
         assert s1 == s2
 
